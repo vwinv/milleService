@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "954654878826",
+    "project_id": "milles-services",
+    "storage_bucket": "milles-services.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:954654878826:android:61fa83b6c4c592b04eee13",
+        "android_client_info": {
+          "package_name": "com.mille.services"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyCa977vg9vOn4J48B2F7797roq0vT71P5E"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
