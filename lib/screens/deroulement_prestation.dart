@@ -11,6 +11,7 @@ import 'package:milleservices/providers/prestationsProvider.dart';
 import 'package:milleservices/providers/userProvider.dart';
 import 'package:milleservices/screens/notification_list.dart';
 import 'package:milleservices/screens/particulier/profil_particulier.dart';
+import 'package:milleservices/services/device_location_service.dart';
 import 'package:milleservices/services/sizeConfig.dart';
 import 'package:milleservices/services/utilities.dart';
 import 'package:milleservices/widgets/road_route_polyline_layer.dart';
@@ -28,6 +29,10 @@ class DeroulementPrestation extends StatefulWidget {
 class _DeroulementPrestationState extends State<DeroulementPrestation> {
   bool _hasNewNotifications = true;
   PrestationsProvider? _prestationsProvider;
+  LatLng? _deviceLatLng;
+  Timer? _gpsTimer;
+  final MapController _mapController = MapController();
+  bool _didCenterOnFirstGps = false;
 
   @override
   void initState() {
@@ -35,14 +40,40 @@ class _DeroulementPrestationState extends State<DeroulementPrestation> {
     final userProvider = context.read<UserProvider>();
     final prestationsProvider = context.read<PrestationsProvider>();
     _prestationsProvider = prestationsProvider;
+    // Rafraîchir souvent : la position du prestataire (profil / GPS) est lue côté API à chaque poll.
     prestationsProvider.startListeningPrestation(
       widget.prestation.id,
       userProvider,
+      pollInterval: const Duration(seconds: 3),
     );
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      unawaited(_refreshMyGps());
+      _gpsTimer = Timer.periodic(
+        const Duration(seconds: 35),
+        (_) => unawaited(_refreshMyGps()),
+      );
+    });
+  }
+
+  Future<void> _refreshMyGps() async {
+    final ll = await DeviceLocationService.getCurrentLatLngOrNull();
+    if (!mounted || ll == null) return;
+    setState(() => _deviceLatLng = ll);
+    if (!mounted) return;
+    final userProvider = context.read<UserProvider>();
+    await userProvider.pushMyDeviceLocation(ll.latitude, ll.longitude);
+    if (!_didCenterOnFirstGps && mounted) {
+      _didCenterOnFirstGps = true;
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) _mapController.move(ll, 15);
+      });
+    }
   }
 
   @override
   void dispose() {
+    _gpsTimer?.cancel();
+    _mapController.dispose();
     _prestationsProvider?.stopListeningPrestation(notify: false);
     super.dispose();
   }
@@ -69,42 +100,58 @@ class _DeroulementPrestationState extends State<DeroulementPrestation> {
         final prestLat = prestation.prestataire?.latitude;
         final prestLng = prestation.prestataire?.longitude;
 
-        final userPoint = (userLat != null && userLng != null)
+        final remoteParticulier = (userLat != null && userLng != null)
             ? LatLng(userLat, userLng)
             : null;
-        final prestPoint = (prestLat != null && prestLng != null)
+        final remotePrestataire = (prestLat != null && prestLng != null)
             ? LatLng(prestLat, prestLng)
             : null;
 
+        /// Particulier : marqueur prestataire = lat/lng du profil prestataire (API), rafraîchis au poll → position live poussée par l’app prestataire.
+        /// Prestataire : soi = GPS local ; client = coords particulier (API).
+        final LatLng? displayParticulier = isPrestataireView
+            ? remoteParticulier
+            : (_deviceLatLng ?? remoteParticulier);
+        final LatLng? displayPrestataire = isPrestataireView
+            ? (_deviceLatLng ?? remotePrestataire)
+            : remotePrestataire;
+
         const LatLng defaultCenter = LatLng(14.7167, -17.4677);
         LatLng center;
-        if (isPrestataireView && prestPoint != null) {
-          center = prestPoint;
-        } else if (!isPrestataireView && userPoint != null) {
-          center = userPoint;
-        } else if (prestPoint != null) {
-          center = prestPoint;
-        } else if (userPoint != null) {
-          center = userPoint;
+        if (isPrestataireView && displayPrestataire != null) {
+          center = displayPrestataire;
+        } else if (!isPrestataireView && displayParticulier != null) {
+          center = displayParticulier;
+        } else if (displayPrestataire != null) {
+          center = displayPrestataire;
+        } else if (displayParticulier != null) {
+          center = displayParticulier;
         } else {
           center = defaultCenter;
         }
 
         final markers = <Marker>[];
-        if (prestPoint != null) {
+        if (displayPrestataire != null) {
           markers.add(
             Marker(
-              point: prestPoint,
+              key: ValueKey(
+                'prest_${displayPrestataire.latitude}_${displayPrestataire.longitude}',
+              ),
+              point: displayPrestataire,
               width: SizeConfig.blockSizeHorizontal * 8,
               height: SizeConfig.blockSizeHorizontal * 8,
               child: const Icon(Icons.home_repair_service, color: Colors.red),
             ),
           );
         }
-        if (userPoint != null) {
+        if (displayParticulier != null) {
           markers.add(
             Marker(
-              point: userPoint,
+              key: ValueKey(
+                'part_${displayParticulier.latitude}_'
+                '${displayParticulier.longitude}',
+              ),
+              point: displayParticulier,
               width: SizeConfig.blockSizeHorizontal * 8,
               height: SizeConfig.blockSizeHorizontal * 8,
               child: const Icon(Icons.person_pin_circle, color: Colors.blue),
@@ -194,6 +241,7 @@ class _DeroulementPrestationState extends State<DeroulementPrestation> {
             children: [
               Positioned.fill(
                 child: FlutterMap(
+                  mapController: _mapController,
                   options: MapOptions(initialCenter: center, initialZoom: 15),
                   children: [
                     TileLayer(
@@ -202,13 +250,13 @@ class _DeroulementPrestationState extends State<DeroulementPrestation> {
                       subdomains: const ['a', 'b', 'c', 'd'],
                       userAgentPackageName: 'milleservices',
                     ),
-                    if (userPoint != null && prestPoint != null)
+                    if (displayParticulier != null && displayPrestataire != null)
                       RoadRoutePolylineLayer(
                         key: ValueKey(
-                          'route_${prestation.id}_${userPoint.latitude}_${userPoint.longitude}_${prestPoint.latitude}_${prestPoint.longitude}',
+                          'route_${prestation.id}_${displayParticulier.latitude}_${displayParticulier.longitude}_${displayPrestataire.latitude}_${displayPrestataire.longitude}',
                         ),
-                        from: userPoint,
-                        to: prestPoint,
+                        from: displayParticulier,
+                        to: displayPrestataire,
                         color: Colors.red,
                         strokeWidth: 4,
                       ),
@@ -242,7 +290,11 @@ class _DeroulementPrestationState extends State<DeroulementPrestation> {
                     ),
                   ],
                 ),
-                child: _buildContentForStatut(prestation),
+                child: _buildContentForStatut(
+                  prestation,
+                  displayParticulier: displayParticulier,
+                  displayPrestataire: displayPrestataire,
+                ),
               ),
             ],
           ),
@@ -256,7 +308,11 @@ class _DeroulementPrestationState extends State<DeroulementPrestation> {
   static const Color _greyInactive = Color(0xFF939191);
   static const Color _red = Color(0xFFE53935);
 
-  Widget _buildContentForStatut(Prestation prestation) {
+  Widget _buildContentForStatut(
+    Prestation prestation, {
+    LatLng? displayParticulier,
+    LatLng? displayPrestataire,
+  }) {
     final user = context.watch<UserProvider>().user;
     final role = user?.role?.toString() ?? '';
     final isPrestataire = role == 'PRESTATAIRE';
@@ -294,7 +350,11 @@ class _DeroulementPrestationState extends State<DeroulementPrestation> {
           if (showRouteAndSummary) ...[
             _buildRouteCard(prestation),
             SizedBox(height: SizeConfig.blockSizeVertical * 1),
-            _buildSummaryCard(prestation),
+            _buildSummaryCard(
+              prestation,
+              displayParticulier: displayParticulier,
+              displayPrestataire: displayPrestataire,
+            ),
           ],
           Padding(
             padding: EdgeInsets.symmetric(
@@ -424,11 +484,19 @@ class _DeroulementPrestationState extends State<DeroulementPrestation> {
   }
 
   /// Carte récap : distance prestataire↔particulier, temps estimé, prix (données dynamiques).
-  Widget _buildSummaryCard(Prestation prestation) {
-    final partLat = prestation.particulier?.latitude;
-    final partLng = prestation.particulier?.longitude;
-    final prestLat = prestation.prestataire?.latitude;
-    final prestLng = prestation.prestataire?.longitude;
+  Widget _buildSummaryCard(
+    Prestation prestation, {
+    LatLng? displayParticulier,
+    LatLng? displayPrestataire,
+  }) {
+    final partLat = displayParticulier?.latitude ??
+        prestation.particulier?.latitude;
+    final partLng = displayParticulier?.longitude ??
+        prestation.particulier?.longitude;
+    final prestLat = displayPrestataire?.latitude ??
+        prestation.prestataire?.latitude;
+    final prestLng = displayPrestataire?.longitude ??
+        prestation.prestataire?.longitude;
 
     final distanceKm =
         (partLat != null &&

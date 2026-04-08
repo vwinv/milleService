@@ -7,7 +7,10 @@ import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter/widgets.dart';
 import 'package:flutter/material.dart';
 import 'package:milleservices/controllers/notificationController.dart';
+import 'package:milleservices/controllers/prestationsController.dart';
+import 'package:milleservices/models/prestation.dart';
 import 'package:milleservices/providers/userProvider.dart';
+import 'package:milleservices/screens/deroulement_prestation.dart';
 import 'package:milleservices/services/fcm_debug_log.dart';
 import 'package:milleservices/services/navigation.dart';
 import 'package:milleservices/services/utilities.dart';
@@ -796,10 +799,49 @@ class NotificationService {
         return;
       }
 
-      // Exemple de routage par type/id métier
       final String? type = (data['type'] is String)
           ? data['type'] as String
           : null;
+
+      final String? prestationId = data['prestationId'] != null
+          ? data['prestationId'].toString()
+          : null;
+      const particulierPrestationTypes = {
+        'prestation_prestataire_arrived',
+        'prestation_accepted',
+        'prestation_completed',
+        'prestation_refused',
+      };
+      if (prestationId != null &&
+          prestationId.isNotEmpty &&
+          type != null &&
+          particulierPrestationTypes.contains(type)) {
+        final userProvider = ctx.read<UserProvider>();
+        var token = userProvider.token;
+        if (token == null || token.isEmpty) {
+          await userProvider.loadUser();
+          token = userProvider.token;
+        }
+        if (token != null && token.isNotEmpty) {
+          final res = await PrestationsController.instance.getPrestationById(
+            token,
+            prestationId,
+          );
+          if (res.success == true && res.data is Map && ctx.mounted) {
+            final map = Map<String, dynamic>.from(res.data as Map);
+            final prestation = Prestation.fromJson(map);
+            fcmAppLog('AFFICHAGE', 'navigation DeroulementPrestation id=$prestationId type=$type');
+            Navigator.of(ctx).push(
+              MaterialPageRoute<void>(
+                builder: (_) => DeroulementPrestation(prestation: prestation),
+              ),
+            );
+            return;
+          }
+        }
+      }
+
+      // Exemple de routage par type/id métier
       if (type != null && type.toLowerCase().contains('booking')) {
         final String? bookingId = (data['bookingId'] is String)
             ? data['bookingId'] as String

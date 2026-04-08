@@ -7,17 +7,20 @@ class AppMap extends StatelessWidget {
   final LatLng center;
   final double zoom;
   final List<Marker> markers;
+  final MapController? mapController;
 
   const AppMap({
     super.key,
     required this.center,
     this.zoom = 15,
     required this.markers,
+    this.mapController,
   });
 
   @override
   Widget build(BuildContext context) {
     return FlutterMap(
+      mapController: mapController,
       options: MapOptions(
         initialCenter: center,
         initialZoom: zoom,

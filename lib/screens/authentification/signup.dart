@@ -398,6 +398,7 @@ class _SignUpState extends State<SignUp> with TickerProviderStateMixin {
             Navigator.of(context).pushReplacement(
               MaterialPageRoute<void>(
                 builder: (_) {
+                  userProvider.refreshVerificationStatus();
                   return resolvePrestataireHome(
                     statutVerificationRaw:
                         userProvider.user?.statutVerification

@@ -2,6 +2,7 @@ import 'package:easy_localization/easy_localization.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter_foreground_task/flutter_foreground_task.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:milleservices/providers/userProvider.dart';
 import 'package:milleservices/providers/prestatairesProvider.dart';
@@ -20,6 +21,7 @@ import 'package:milleservices/services/prestataire_home_resolver.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
+  FlutterForegroundTask.initCommunicationPort();
   await EasyLocalization.ensureInitialized();
 
   final prefs = await SharedPreferences.getInstance();
@@ -121,6 +123,8 @@ class _MyAppState extends State<MyApp> {
               context.localizationDelegates, // ✅ EasyLocalization
           supportedLocales: context.supportedLocales, // ✅ EasyLocalization
           locale: settingsProvider.locale ?? context.locale,
+          builder: (context, child) =>
+              WithForegroundTask(child: child ?? const SizedBox.shrink()),
           home: const MyHomePage(title: 'Mille Services'),
         );
       },

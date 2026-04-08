@@ -1,6 +1,7 @@
 import Flutter
 import FirebaseCore
 import UIKit
+import flutter_foreground_task
 
 @main
 @objc class AppDelegate: FlutterAppDelegate {
@@ -10,6 +11,9 @@ import UIKit
   ) -> Bool {
     FirebaseApp.configure()
     GeneratedPluginRegistrant.register(with: self)
+    SwiftFlutterForegroundTaskPlugin.setPluginRegistrantCallback { registry in
+      GeneratedPluginRegistrant.register(with: registry)
+    }
     return super.application(application, didFinishLaunchingWithOptions: launchOptions)
   }
 }

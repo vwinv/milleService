@@ -22,27 +22,39 @@ class PrestationsProvider extends ChangeNotifier {
 
   // Stream pour l'écran déroulement : écoute GET /prestations/:id en continu
   StreamController<Prestation>? _prestationStreamController;
-  static const Duration _pollInterval = Duration(seconds: 4);
+  static const Duration _defaultPollInterval = Duration(seconds: 4);
   bool _listening = false;
   String? _listeningPrestationId;
+  Duration _pollInterval = _defaultPollInterval;
 
   /// Stream de la prestation en cours d'écoute (pour StreamBuilder sur l'écran déroulement).
   Stream<Prestation>? get prestationStream => _prestationStreamController?.stream;
 
-  /// Démarre l'écoute de l'endpoint GET /prestations/:id (polling toutes les 4 s).
-  void startListeningPrestation(String prestationId, UserProvider userProvider) {
+  /// Démarre l'écoute de l'endpoint GET /prestations/:id (polling, 4 s par défaut).
+  /// [pollInterval] : sur le déroulement, intervalle plus court pour suivre la position live du prestataire.
+  void startListeningPrestation(
+    String prestationId,
+    UserProvider userProvider, {
+    Duration pollInterval = _defaultPollInterval,
+  }) {
     if (prestationId.isEmpty) return;
-    if (_listening && _listeningPrestationId == prestationId) return;
+    if (_listening &&
+        _listeningPrestationId == prestationId &&
+        _pollInterval == pollInterval) {
+      return;
+    }
 
     stopListeningPrestation(notify: false);
     _prestationStreamController = StreamController<Prestation>.broadcast();
     _listeningPrestationId = prestationId;
+    _pollInterval = pollInterval;
     _listening = true;
     _pollLoop(userProvider);
   }
 
   Future<void> _pollLoop(UserProvider userProvider) async {
     final id = _listeningPrestationId!;
+    final interval = _pollInterval;
     // Laisser le build en cours se terminer avant la première émission (évite setState pendant build).
     await Future.delayed(Duration.zero);
     while (_listening && _prestationStreamController != null) {
@@ -59,7 +71,7 @@ class PrestationsProvider extends ChangeNotifier {
         _prestationStreamController!.add(prestation);
       }
 
-      await Future.delayed(_pollInterval);
+      await Future.delayed(interval);
     }
   }
 

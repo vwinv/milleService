@@ -7,6 +7,8 @@ import 'package:milleservices/models/offre.dart';
 import 'package:milleservices/models/prestataire_document.dart';
 import 'package:milleservices/models/user.dart';
 import 'package:milleservices/models/response.dart';
+import 'package:milleservices/services/live_location_foreground_service.dart';
+import 'package:milleservices/services/live_location_sync.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 class UserProvider extends ChangeNotifier {
@@ -151,6 +153,7 @@ class UserProvider extends ChangeNotifier {
       } else {
         await prefs.remove("abonnement");
       }
+      await LiveLocationForegroundService.startIfAuthenticated(_user, _token);
     }
     setLoading(false);
     return data;
@@ -189,6 +192,7 @@ class UserProvider extends ChangeNotifier {
       } else {
         await prefs.remove("abonnement");
       }
+      await LiveLocationForegroundService.startIfAuthenticated(_user, _token);
     }
     setLoading(false);
     return data;
@@ -205,6 +209,7 @@ class UserProvider extends ChangeNotifier {
     _avatarUrlOverride = prefs.getString("avatarUrl");
     _initialLoadDone = true;
     notifyListeners();
+    await LiveLocationForegroundService.startIfAuthenticated(_user, _token);
   }
 
   /// Enregistre l’URL de photo sur le backend puis dans le [User] local.
@@ -277,6 +282,7 @@ class UserProvider extends ChangeNotifier {
   }
 
   Future<void> logout() async {
+    await LiveLocationForegroundService.stop();
     _token = null;
     _user = null;
     _Rtoken = null;
@@ -409,6 +415,65 @@ class UserProvider extends ChangeNotifier {
       return data;
     } finally {
       setLoading(false);
+    }
+  }
+
+  /// Envoie la position GPS au backend (particulier ou prestataire), sans loader global.
+  /// Utilisé sur les cartes pour le niveau 2 ; limité par [LiveLocationSync].
+  Future<void> pushMyDeviceLocation(double lat, double lng) async {
+    if (_token == null || _user == null) return;
+    final role = _user!.role?.toString();
+    if (role != 'PARTICULIER' && role != 'PRESTATAIRE') return;
+    if (!await LiveLocationSync.shouldSendToServer()) return;
+
+    Future<ResponseData> send(String token) async {
+      if (role == 'PRESTATAIRE') {
+        return userController.updatePrestataireMe(
+          token: token,
+          latitude: lat,
+          longitude: lng,
+        );
+      }
+      return userController.updateParticulierMe(
+        token: token,
+        latitude: lat,
+        longitude: lng,
+      );
+    }
+
+    var data = await send(_token!);
+    if (data.status == 401) {
+      await refreshToken();
+      if (_token != null) {
+        data = await send(_token!);
+      }
+    }
+
+    if (data.success == true && _user != null) {
+      await LiveLocationSync.markServerSuccess();
+      final u = _user!;
+      _user = User(
+        id: u.id,
+        telephone: u.telephone,
+        prenom: u.prenom,
+        nom: u.nom,
+        avatarUrl: u.avatarUrl,
+        adresse: u.adresse,
+        email: u.email,
+        emailVerified: u.emailVerified,
+        bio: u.bio,
+        zoneIntervention: u.zoneIntervention,
+        statutVerification: u.statutVerification,
+        createdAt: u.createdAt,
+        updatedAt: u.updatedAt,
+        role: u.role,
+        latitude: lat,
+        longitude: lng,
+        statutVerificationPrestataire: u.statutVerificationPrestataire,
+      );
+      notifyListeners();
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setString("user", User.encode(_user!));
     }
   }
 
@@ -625,6 +690,7 @@ class UserProvider extends ChangeNotifier {
         } else {
           await prefs.remove("abonnement");
         }
+        await LiveLocationForegroundService.startIfAuthenticated(_user, _token);
       }
 
       return data;
@@ -670,6 +736,7 @@ class UserProvider extends ChangeNotifier {
         await prefs.setString("Rtoken", _Rtoken!);
         await prefs.setString("user", User.encode(_user!));
         await prefs.remove("abonnement");
+        await LiveLocationForegroundService.startIfAuthenticated(_user, _token);
       }
 
       return data;

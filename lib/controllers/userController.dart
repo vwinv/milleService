@@ -45,6 +45,8 @@ class UserController {
     String? bio,
     String? avatarUrl,
     List<String>? serviceIds,
+    double? latitude,
+    double? longitude,
   }) async {
     // Vérifier la connexion internet
     bool hasInternet = await _checkInternetConnection();
@@ -67,6 +69,8 @@ class UserController {
       if (bio != null) body['bio'] = bio.trim();
       if (avatarUrl != null) body['avatarUrl'] = avatarUrl.trim();
       if (serviceIds != null) body['serviceIds'] = serviceIds;
+      if (latitude != null) body['latitude'] = latitude;
+      if (longitude != null) body['longitude'] = longitude;
 
       final response = await dio.patch(
         '/prestataires/me',
@@ -112,6 +116,8 @@ class UserController {
     String? telephone,
     String? adresse,
     String? avatarUrl,
+    double? latitude,
+    double? longitude,
   }) async {
     bool hasInternet = await _checkInternetConnection();
     if (!hasInternet) {
@@ -132,6 +138,8 @@ class UserController {
       if (telephone != null) body['telephone'] = telephone.trim();
       if (adresse != null) body['adresse'] = adresse.trim();
       if (avatarUrl != null) body['avatarUrl'] = avatarUrl.trim();
+      if (latitude != null) body['latitude'] = latitude;
+      if (longitude != null) body['longitude'] = longitude;
 
       final response = await dio.patch(
         '/auth/me/particulier',

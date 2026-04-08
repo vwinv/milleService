@@ -13,11 +13,13 @@ class Authcontroller {
   Authcontroller();
   static final Authcontroller instance = Authcontroller._instantiate();
 
+  /// Délais relevés : inscription prestataire = uploads Cloudinary + POST register + géocodage serveur (souvent > 10 s sur mobile / Render).
   final dio = Dio(
     BaseOptions(
       baseUrl: Utilities().baseUrl,
-      connectTimeout: const Duration(seconds: 10),
-      receiveTimeout: const Duration(seconds: 10),
+      connectTimeout: const Duration(seconds: 30),
+      sendTimeout: const Duration(seconds: 120),
+      receiveTimeout: const Duration(seconds: 90),
     ),
   );
 
@@ -74,12 +76,15 @@ class Authcontroller {
         );
       }
 
+      final loginStr = login.toString().trim();
+      final isEmail = loginStr.contains('@');
       final response = await dio.post(
         "/auth/login",
         data: jsonEncode({
-          "telephone": login,
-          "password": mdp,
-          "role": role,
+          if (isEmail) 'email': loginStr,
+          if (!isEmail) 'telephone': loginStr,
+          'password': mdp,
+          'role': role,
         }),
         options: Options(
           headers: {"Content-Type": "application/json"},
@@ -228,6 +233,18 @@ class Authcontroller {
     return e.message;
   }
 
+  String _networkErrorMessageForUser(DioException e) {
+    switch (e.type) {
+      case DioExceptionType.receiveTimeout:
+      case DioExceptionType.sendTimeout:
+      case DioExceptionType.connectionTimeout:
+        return 'Le serveur met trop longtemps à répondre. Vérifiez votre connexion '
+            'ou réessayez dans quelques instants (réseau lent ou serveur occupé).';
+      default:
+        return _dioErrorMessage(e) ?? 'Erreur réseau. Réessayez.';
+    }
+  }
+
   String? _messageFromUploadBody(dynamic raw) {
     if (raw is! Map) return null;
     final map = Map<String, dynamic>.from(raw);
@@ -366,14 +383,14 @@ class Authcontroller {
         });
         return finalResponse;
       } else {
-        // 🚨 Problème réseau (timeout, pas d’internet, etc.)
-        ResponseData finalResponse = ResponseData.fromJson({
-          "success": false,
-          "data": [],
-          "status": 500,
-          "message": e.response?.data["message"] ?? "Erreur serveur",
-        });
-        return finalResponse;
+        // 🚨 Problème réseau (timeout, pas d’internet, etc.) — pas de e.response
+        return ResponseData(
+          success: false,
+          data: [],
+          status: 500,
+          message: _networkErrorMessageForUser(e),
+          emailNotVerified: false,
+        );
       }
     } catch (e) {
       // 🚨 Autres erreurs imprévues

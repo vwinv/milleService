@@ -13,6 +13,7 @@ import 'package:milleservices/screens/edit_infos.dart';
 import 'package:milleservices/screens/historique.dart';
 import 'package:milleservices/screens/prestataire/wallet.dart';
 import 'package:milleservices/screens/welcome.dart';
+import 'package:milleservices/services/device_location_service.dart';
 import 'package:milleservices/services/app_locale.dart';
 import 'package:milleservices/services/image_helper.dart';
 import 'package:milleservices/services/sizeConfig.dart';
@@ -38,6 +39,7 @@ class _HomePrestataireState extends State<HomePrestataire> {
   int? _prestationsEnAttente;
   int? _prestationsTerminees;
   Timer? _statsTimer;
+  Timer? _locationTimer;
   final ImagePicker _picker = ImagePicker();
   final Authcontroller _authController = Authcontroller();
   final PrestatairesController _prestatairesController =
@@ -49,17 +51,30 @@ class _HomePrestataireState extends State<HomePrestataire> {
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _loadPrestationStats();
       _loadCataloguePhotos();
+      unawaited(_syncPrestataireGps());
     });
     _statsTimer = Timer.periodic(const Duration(seconds: 15), (_) {
       if (mounted) {
         _loadPrestationStats();
       }
     });
+    _locationTimer = Timer.periodic(const Duration(seconds: 45), (_) {
+      if (mounted) unawaited(_syncPrestataireGps());
+    });
+  }
+
+  Future<void> _syncPrestataireGps() async {
+    final ll = await DeviceLocationService.getCurrentLatLngOrNull();
+    if (!mounted || ll == null) return;
+    if (!mounted) return;
+    final up = context.read<UserProvider>();
+    await up.pushMyDeviceLocation(ll.latitude, ll.longitude);
   }
 
   @override
   void dispose() {
     _statsTimer?.cancel();
+    _locationTimer?.cancel();
     super.dispose();
   }
 

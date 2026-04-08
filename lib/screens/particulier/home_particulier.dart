@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:easy_localization/easy_localization.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_map/flutter_map.dart';
@@ -10,6 +12,7 @@ import 'package:milleservices/providers/prestatairesProvider.dart';
 import 'package:milleservices/providers/userProvider.dart';
 import 'package:milleservices/screens/particulier/pages/demander_service_page.dart';
 import 'package:milleservices/screens/particulier/pages/favoris_content.dart';
+import 'package:milleservices/services/device_location_service.dart';
 import 'package:milleservices/services/sizeConfig.dart';
 import 'package:milleservices/services/utilities.dart';
 import 'package:milleservices/services/app_map.dart';
@@ -24,31 +27,66 @@ class HomeParticulier extends StatefulWidget {
 
 class _HomeParticulierState extends State<HomeParticulier> {
   bool _hasNewNotifications = true;
-  bool _initialLoadDone = false;
+  bool _bootstrapStarted = false;
+  LatLng? _deviceLatLng;
 
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
-    if (!_initialLoadDone) {
-      _initialLoadDone = true;
-      WidgetsBinding.instance.addPostFrameCallback((_) => _loadFavoris());
+    if (!_bootstrapStarted) {
+      _bootstrapStarted = true;
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        unawaited(_bootstrapLocationAndFavoris());
+      });
     }
   }
 
-  void _loadFavoris() {
+  /// GPS (niveau 1) puis favoris avec ces coords ; envoi serveur (niveau 2).
+  Future<void> _bootstrapLocationAndFavoris() async {
+    if (!mounted) return;
     final userProvider = context.read<UserProvider>();
-    final user = userProvider.user;
-    double? lat;
-    double? lng;
-    if (user?.latitude != null && user?.longitude != null) {
-      lat = (user!.latitude as num).toDouble();
-      lng = (user.longitude as num).toDouble();
+    final device = await DeviceLocationService.getCurrentLatLngOrNull();
+    if (!mounted) return;
+    setState(() => _deviceLatLng = device);
+
+    final u = userProvider.user;
+    double? lat = device?.latitude;
+    double? lng = device?.longitude;
+    if (lat == null && u?.latitude != null && u?.longitude != null) {
+      lat = (u!.latitude as num).toDouble();
+      lng = (u.longitude as num).toDouble();
     }
-    context.read<PrestatairesProvider>().loadFavoris(
+
+    await context.read<PrestatairesProvider>().loadFavoris(
           lat: lat,
           lng: lng,
           userProvider: userProvider,
         );
+
+    if (device != null && mounted) {
+      unawaited(
+        userProvider.pushMyDeviceLocation(device.latitude, device.longitude),
+      );
+    }
+  }
+
+  /// Relecture GPS (ex. émulateur après avoir défini un point dans les réglages).
+  Future<void> _refreshDeviceLocationOnly() async {
+    if (!mounted) return;
+    final userProvider = context.read<UserProvider>();
+    final device = await DeviceLocationService.getCurrentLatLngOrNull();
+    if (!mounted) return;
+    setState(() => _deviceLatLng = device);
+    if (device != null) {
+      unawaited(
+        userProvider.pushMyDeviceLocation(device.latitude, device.longitude),
+      );
+      await context.read<PrestatairesProvider>().loadFavoris(
+            lat: device.latitude,
+            lng: device.longitude,
+            userProvider: userProvider,
+          );
+    }
   }
 
   @override
@@ -139,7 +177,36 @@ class _HomeParticulierState extends State<HomeParticulier> {
           SizedBox(
             width: double.infinity,
             height: SizeConfig.blockSizeVertical * 35,
-            child: _HomeMap(user: user, favoris: prestatairesProvider.favoris),
+            child: Stack(
+              fit: StackFit.expand,
+              children: [
+                _HomeMap(
+                  user: user,
+                  favoris: prestatairesProvider.favoris,
+                  deviceLatLng: _deviceLatLng,
+                ),
+                Positioned(
+                  right: SizeConfig.blockSizeHorizontal * 2,
+                  bottom: SizeConfig.blockSizeVertical * 1,
+                  child: Material(
+                    elevation: 4,
+                    shape: const CircleBorder(),
+                    color: Colors.white,
+                    clipBehavior: Clip.antiAlias,
+                    child: IconButton(
+                      tooltip: 'Actualiser ma position GPS',
+                      icon: Icon(
+                        Icons.my_location,
+                        color: Utilities().colorBlue,
+                      ),
+                      onPressed: () {
+                        unawaited(_refreshDeviceLocationOnly());
+                      },
+                    ),
+                  ),
+                ),
+              ],
+            ),
           ),
           Expanded(
             child: Consumer<HomeContentProvider>(
@@ -167,31 +234,84 @@ class _HomeParticulierState extends State<HomeParticulier> {
   }
 }
 
-class _HomeMap extends StatelessWidget {
+class _HomeMap extends StatefulWidget {
   final dynamic user;
   final List<Prestataire> favoris;
+  final LatLng? deviceLatLng;
 
-  const _HomeMap({required this.user, required this.favoris});
+  const _HomeMap({
+    required this.user,
+    required this.favoris,
+    required this.deviceLatLng,
+  });
+
+  @override
+  State<_HomeMap> createState() => _HomeMapState();
+}
+
+class _HomeMapState extends State<_HomeMap> {
+  final MapController _mapController = MapController();
+  static const double _zoom = 15;
+
+  LatLng _youPoint() {
+    if (widget.deviceLatLng != null) return widget.deviceLatLng!;
+    final u = widget.user;
+    if (u != null && u.latitude != null && u.longitude != null) {
+      return LatLng(
+        (u.latitude as num).toDouble(),
+        (u.longitude as num).toDouble(),
+      );
+    }
+    return const LatLng(48.8566, 2.3522);
+  }
+
+  @override
+  void didUpdateWidget(covariant _HomeMap oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    final oldPt = oldWidget.deviceLatLng ??
+        (oldWidget.user != null &&
+                oldWidget.user.latitude != null &&
+                oldWidget.user.longitude != null
+            ? LatLng(
+                (oldWidget.user.latitude as num).toDouble(),
+                (oldWidget.user.longitude as num).toDouble(),
+              )
+            : null);
+    final newPt = widget.deviceLatLng ??
+        (widget.user != null &&
+                widget.user.latitude != null &&
+                widget.user.longitude != null
+            ? LatLng(
+                (widget.user.latitude as num).toDouble(),
+                (widget.user.longitude as num).toDouble(),
+              )
+            : null);
+    if (oldPt?.latitude != newPt?.latitude || oldPt?.longitude != newPt?.longitude) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) _mapController.move(_youPoint(), _zoom);
+      });
+    }
+  }
+
+  @override
+  void dispose() {
+    _mapController.dispose();
+    super.dispose();
+  }
 
   @override
   Widget build(BuildContext context) {
-    final center =
-        user != null && user.latitude != null && user.longitude != null
-        ? LatLng(
-            (user.latitude as num).toDouble(),
-            (user.longitude as num).toDouble(),
-          )
-        : const LatLng(48.8566, 2.3522);
+    final center = _youPoint();
 
     final markers = <Marker>[];
 
-    if (user != null && user.latitude != null && user.longitude != null) {
+    final you = _youPoint();
+    if (widget.user != null &&
+        (widget.deviceLatLng != null ||
+            (widget.user.latitude != null && widget.user.longitude != null))) {
       markers.add(
         Marker(
-          point: LatLng(
-            (user.latitude as num).toDouble(),
-            (user.longitude as num).toDouble(),
-          ),
+          point: you,
           width: SizeConfig.blockSizeHorizontal * 50,
           height: SizeConfig.blockSizeVertical * 10,
           child: Column(
@@ -228,7 +348,7 @@ class _HomeMap extends StatelessWidget {
       );
     }
 
-    for (final p in favoris) {
+    for (final p in widget.favoris) {
       if (p.latitude != null && p.longitude != null) {
         markers.add(
           Marker(
@@ -274,8 +394,9 @@ class _HomeMap extends StatelessWidget {
     }
 
     return AppMap(
+      mapController: _mapController,
       center: center,
-      zoom: 15,
+      zoom: _zoom,
       markers: markers,
     );
   }

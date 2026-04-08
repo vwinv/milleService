@@ -1,5 +1,6 @@
 import 'package:flutter/foundation.dart';
 import 'package:milleservices/controllers/prestatairesController.dart';
+import 'package:milleservices/services/device_location_service.dart';
 import 'package:milleservices/models/avis_client.dart';
 import 'package:milleservices/models/prestataire.dart';
 import 'package:milleservices/models/prestataire_photo.dart';
@@ -221,6 +222,7 @@ class PrestatairesProvider extends ChangeNotifier {
     required UserProvider userProvider,
   }) async {
     _isLoading = true;
+    _error = null;
     _favorisListeProximite = false;
     notifyListeners();
 
@@ -260,6 +262,14 @@ class PrestatairesProvider extends ChangeNotifier {
           .whereType<Map<String, dynamic>>()
           .map(Prestataire.fromJson)
           .toList();
+      _error = null;
+    } else {
+      _favoris = [];
+      _favorisListeProximite = false;
+      final msg = result.message;
+      _error = msg != null && msg.toString().trim().isNotEmpty
+          ? msg.toString()
+          : 'Impossible de charger les favoris. Vérifiez votre connexion.';
     }
     _isLoading = false;
     notifyListeners();
@@ -278,11 +288,27 @@ class PrestatairesProvider extends ChangeNotifier {
     _searchResults = [];
     notifyListeners();
 
+    double? searchLat;
+    double? searchLng;
+    final device = await DeviceLocationService.getCurrentLatLngOrNull();
+    if (device != null) {
+      searchLat = device.latitude;
+      searchLng = device.longitude;
+    } else {
+      final u = userProvider.user;
+      if (u?.latitude != null && u?.longitude != null) {
+        searchLat = (u!.latitude as num).toDouble();
+        searchLng = (u.longitude as num).toDouble();
+      }
+    }
+
     var result = await _controller.searchPrestataires(
       serviceId: serviceId,
       tarifMin: tarifMin,
       tarifMax: tarifMax,
       date: date,
+      lat: searchLat,
+      lng: searchLng,
       token: userProvider.token,
     );
 
@@ -294,6 +320,8 @@ class PrestatairesProvider extends ChangeNotifier {
         tarifMin: tarifMin,
         tarifMax: tarifMax,
         date: date,
+        lat: searchLat,
+        lng: searchLng,
         token: userProvider.token,
       );
     }

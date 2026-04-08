@@ -5,6 +5,22 @@ import 'package:dio/dio.dart';
 import 'package:milleservices/models/response.dart';
 import 'package:milleservices/services/utilities.dart';
 
+/// Extrait un libellé lisible (Nest peut renvoyer `message` en [String] ou [List]).
+String _messageFromApiBody(dynamic raw) {
+  if (raw == null) return 'Erreur serveur';
+  if (raw is! Map) return 'Erreur serveur';
+  final m = raw['message'];
+  if (m is String && m.isNotEmpty) return m;
+  if (m is List) {
+    final parts = m
+        .map((e) => e.toString())
+        .where((s) => s.isNotEmpty)
+        .toList();
+    if (parts.isNotEmpty) return parts.join(', ');
+  }
+  return 'Erreur serveur';
+}
+
 class PrestatairesController {
   PrestatairesController._instantiate();
   PrestatairesController();
@@ -92,11 +108,15 @@ class PrestatairesController {
         ),
       );
 
+      final raw = response.data;
+      final msg = _messageFromApiBody(raw);
+
       ResponseData finalResponse = ResponseData.fromJson({
-        "success": response.data['success'],
-        "data": response.data['data'],
-        "message": response.data["message"] ?? "Erreur serveur",
-        "emailNotVerified": response.data["emailNotVerified"] ?? "null",
+        "success": raw is Map ? raw['success'] : null,
+        "data": raw is Map ? raw['data'] : null,
+        "message": msg,
+        "emailNotVerified":
+            raw is Map ? raw["emailNotVerified"] ?? "null" : "null",
         "status": response.statusCode,
       });
 
@@ -110,7 +130,7 @@ class PrestatairesController {
           "data": [],
           "status": e.response!.statusCode,
           "emailNotVerified": e.response?.data["emailNotVerified"] ?? "null",
-          "message": e.response?.data["message"] ?? "Erreur serveur",
+          "message": _messageFromApiBody(e.response?.data),
         });
         return finalResponse;
       } else {
@@ -120,7 +140,7 @@ class PrestatairesController {
           "success": false,
           "data": [],
           "status": 500,
-          "message": e.response?.data["message"] ?? "Erreur serveur",
+          "message": _messageFromApiBody(e.response?.data),
         });
         return finalResponse;
       }
@@ -218,11 +238,14 @@ class PrestatairesController {
   }
 
   /// Recherche de prestataires par service, tarif (min/max) et date optionnelle (planifier).
+  /// [lat] / [lng] : position actuelle si disponible ; sinon le backend utilise le profil / l’adresse.
   Future<ResponseData> searchPrestataires({
     String? serviceId,
     double? tarifMin,
     double? tarifMax,
     String? date,
+    double? lat,
+    double? lng,
     String? token,
   }) async {
     try {
@@ -245,6 +268,8 @@ class PrestatairesController {
       if (tarifMin != null) queryParams['tarifMin'] = tarifMin.toInt();
       if (tarifMax != null) queryParams['tarifMax'] = tarifMax.toInt();
       if (date != null) queryParams['date'] = date;
+      if (lat != null) queryParams['lat'] = lat;
+      if (lng != null) queryParams['lng'] = lng;
 
       final response = await dio.get(
         '/prestataires/search',
@@ -283,14 +308,14 @@ class PrestatairesController {
           "data": [],
           "status": e.response!.statusCode,
           "emailNotVerified": e.response?.data["emailNotVerified"] ?? "null",
-          "message": e.response?.data["message"] ?? "Erreur serveur",
+          "message": _messageFromApiBody(e.response?.data),
         });
       } else {
         return ResponseData.fromJson({
           "success": false,
           "data": [],
           "status": 500,
-          "message": e.response?.data["message"] ?? "Erreur serveur",
+          "message": _messageFromApiBody(e.response?.data),
         });
       }
     } catch (e) {
