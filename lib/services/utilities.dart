@@ -20,8 +20,20 @@ String resolveBackendBaseUrl() {
 }
 
 class Utilities {
+  /// Toggle global de la source de position:
+  /// - true  => position GPS temps reel
+  /// - false => position/adresse enregistree (profil/backend)
+  static bool useRealtimeLocation = true;
+
+  // Facturation prestation (FCFA)
+  static const double serviceFeeFcfa = 500;
+  static const double travelFeeFcfa = 2000;
+
+  /// Taux sur le montant « travail » seul ; la plateforme prend aussi les frais de service en intégral (voir [computePrestationBilling]).
+  static const double systemCommissionRate = 0.35;
+
   // Production : décommenter et adapter si besoin
-  String get baseUrl => "https://milleservice-backend.onrender.com";
+  String get baseUrl => "https://milleservice-backend-aacp.onrender.com";
   //String get baseUrl => resolveBackendBaseUrl();
   String imagePath = "assets/images/";
   Color colorBlueDark = Color(0xFF020B51);
@@ -215,6 +227,42 @@ class Utilities {
       if (entry.mounted) entry.remove();
     });
   }
+}
+
+class PrestationBillingBreakdown {
+  final double baseAmountFcfa;
+  final double serviceFeeFcfa;
+  final double travelFeeFcfa;
+  final double totalToPayFcfa;
+  final double systemCommissionFcfa;
+
+  const PrestationBillingBreakdown({
+    required this.baseAmountFcfa,
+    required this.serviceFeeFcfa,
+    required this.travelFeeFcfa,
+    required this.totalToPayFcfa,
+    required this.systemCommissionFcfa,
+  });
+}
+
+/// Montant à payer = (tarif horaire × durée en heures) + frais de service + frais de déplacement.
+PrestationBillingBreakdown computePrestationBilling({
+  required double tarifHoraireFcfa,
+  required double executionHours,
+}) {
+  final safeTarif = tarifHoraireFcfa < 0 ? 0.0 : tarifHoraireFcfa;
+  final safeHours = executionHours < 0 ? 0.0 : executionHours;
+  final base = safeTarif * safeHours;
+  final commission =
+      base * Utilities.systemCommissionRate + Utilities.serviceFeeFcfa;
+  final total = base + Utilities.serviceFeeFcfa + Utilities.travelFeeFcfa;
+  return PrestationBillingBreakdown(
+    baseAmountFcfa: base,
+    serviceFeeFcfa: Utilities.serviceFeeFcfa,
+    travelFeeFcfa: Utilities.travelFeeFcfa,
+    totalToPayFcfa: total,
+    systemCommissionFcfa: commission,
+  );
 }
 
 class ConnectionNotifier {

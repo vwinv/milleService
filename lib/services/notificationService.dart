@@ -12,6 +12,7 @@ import 'package:milleservices/models/prestation.dart';
 import 'package:milleservices/providers/userProvider.dart';
 import 'package:milleservices/screens/deroulement_prestation.dart';
 import 'package:milleservices/services/fcm_debug_log.dart';
+import 'package:milleservices/services/push_local_notifications.dart';
 import 'package:milleservices/services/navigation.dart';
 import 'package:milleservices/services/utilities.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -73,6 +74,13 @@ class NotificationService {
       print('🔔 Firebase.initializeApp() appelé avec succès');
     } catch (e) {
       print('🔔 Firebase.initializeApp() déjà initialisé ou erreur bénigne: $e');
+    }
+
+    try {
+      await initPushLocalNotifications();
+      fcmAppLog('CONFIG', 'initPushLocalNotifications OK');
+    } catch (e) {
+      fcmAppLog('CONFIG', 'initPushLocalNotifications erreur: $e');
     }
 
     try {
@@ -744,6 +752,19 @@ class NotificationService {
         'SKIP premier-plan : prefs utilisateur ou permission système = notifications désactivées (le message a bien été RÉCEPTIONné)',
       );
       return;
+    }
+
+    // Android : en premier plan FCM n’affiche pas la notification système ; on la duplique localement.
+    if (Platform.isAndroid) {
+      try {
+        await displayPushFromRemoteMessage(message);
+        fcmAppLog(
+          'AFFICHAGE',
+          'notification locale système (Android premier plan) affichée',
+        );
+      } catch (e) {
+        fcmAppLog('AFFICHAGE', 'notification locale Android erreur: $e');
+      }
     }
 
     final ctx =

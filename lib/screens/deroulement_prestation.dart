@@ -1,20 +1,24 @@
 import 'dart:async';
 import 'dart:math' as math;
+import 'dart:ui';
 import 'package:easy_localization/easy_localization.dart';
 import 'package:flutter/material.dart';
-import 'package:flutter_map/flutter_map.dart';
-import 'package:latlong2/latlong.dart';
+import 'package:google_maps_flutter/google_maps_flutter.dart';
 import 'package:milleservices/controllers/prestationsController.dart';
+import 'package:milleservices/controllers/geocodingController.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:milleservices/models/prestation.dart';
+import 'package:milleservices/models/response.dart';
 import 'package:milleservices/providers/prestationsProvider.dart';
 import 'package:milleservices/providers/userProvider.dart';
 import 'package:milleservices/screens/notification_list.dart';
 import 'package:milleservices/screens/particulier/profil_particulier.dart';
 import 'package:milleservices/services/device_location_service.dart';
+import 'package:milleservices/services/map_style.dart';
+import 'package:milleservices/services/google_route_service.dart';
 import 'package:milleservices/services/sizeConfig.dart';
 import 'package:milleservices/services/utilities.dart';
-import 'package:milleservices/widgets/road_route_polyline_layer.dart';
+import 'package:milleservices/widgets/paiement_soft_pay_sheet.dart';
 import 'package:provider/provider.dart';
 
 class DeroulementPrestation extends StatefulWidget {
@@ -31,8 +35,15 @@ class _DeroulementPrestationState extends State<DeroulementPrestation> {
   PrestationsProvider? _prestationsProvider;
   LatLng? _deviceLatLng;
   Timer? _gpsTimer;
-  final MapController _mapController = MapController();
+  Timer? _elapsedUiTimer;
+  GoogleMapController? _mapController;
   bool _didCenterOnFirstGps = false;
+  LatLng? _lastDisplayedParticulier;
+  LatLng? _lastDisplayedPrestataire;
+  LatLng? _storedParticulierLatLng;
+  LatLng? _storedPrestataireLatLng;
+  String? _storedAddressKey;
+  bool _mapInitialLoading = true;
 
   @override
   void initState() {
@@ -47,15 +58,21 @@ class _DeroulementPrestationState extends State<DeroulementPrestation> {
       pollInterval: const Duration(seconds: 3),
     );
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      unawaited(_refreshMyGps());
-      _gpsTimer = Timer.periodic(
-        const Duration(seconds: 35),
-        (_) => unawaited(_refreshMyGps()),
-      );
+      if (Utilities.useRealtimeLocation) {
+        unawaited(_refreshMyGps());
+        _gpsTimer = Timer.periodic(
+          const Duration(seconds: 35),
+          (_) => unawaited(_refreshMyGps()),
+        );
+      }
+      _elapsedUiTimer = Timer.periodic(const Duration(seconds: 1), (_) {
+        if (mounted) setState(() {});
+      });
     });
   }
 
   Future<void> _refreshMyGps() async {
+    if (!Utilities.useRealtimeLocation) return;
     final ll = await DeviceLocationService.getCurrentLatLngOrNull();
     if (!mounted || ll == null) return;
     setState(() => _deviceLatLng = ll);
@@ -65,15 +82,44 @@ class _DeroulementPrestationState extends State<DeroulementPrestation> {
     if (!_didCenterOnFirstGps && mounted) {
       _didCenterOnFirstGps = true;
       WidgetsBinding.instance.addPostFrameCallback((_) {
-        if (mounted) _mapController.move(ll, 15);
+        if (mounted) {
+          _mapController?.animateCamera(CameraUpdate.newLatLngZoom(ll, 15));
+        }
       });
     }
+  }
+
+  Future<void> _refreshStoredAddressPositions(Prestation prestation) async {
+    if (Utilities.useRealtimeLocation) return;
+    final particulierAddress = (prestation.adresse ?? '').trim();
+    final prestataireAddress = (prestation.prestataire?.adresse ?? '').trim();
+    final key = '$particulierAddress|$prestataireAddress';
+    if (_storedAddressKey == key) return;
+    _storedAddressKey = key;
+
+    final geocoding = GeocodingController();
+    final part = particulierAddress.length >= 3
+        ? await geocoding.geocode(particulierAddress)
+        : null;
+    final prest = prestataireAddress.length >= 3
+        ? await geocoding.geocode(prestataireAddress)
+        : null;
+    if (!mounted || _storedAddressKey != key) return;
+    setState(() {
+      _storedParticulierLatLng = part != null
+          ? LatLng(part.lat, part.lng)
+          : null;
+      _storedPrestataireLatLng = prest != null
+          ? LatLng(prest.lat, prest.lng)
+          : null;
+    });
   }
 
   @override
   void dispose() {
     _gpsTimer?.cancel();
-    _mapController.dispose();
+    _elapsedUiTimer?.cancel();
+    _mapController?.dispose();
     _prestationsProvider?.stopListeningPrestation(notify: false);
     super.dispose();
   }
@@ -90,6 +136,9 @@ class _DeroulementPrestationState extends State<DeroulementPrestation> {
       initialData: widget.prestation,
       builder: (context, snapshot) {
         final prestation = snapshot.data ?? widget.prestation;
+        if (!Utilities.useRealtimeLocation) {
+          unawaited(_refreshStoredAddressPositions(prestation));
+        }
 
         final user = context.watch<UserProvider>().user;
         final role = user?.role?.toString() ?? '';
@@ -110,11 +159,21 @@ class _DeroulementPrestationState extends State<DeroulementPrestation> {
         /// Particulier : marqueur prestataire = lat/lng du profil prestataire (API), rafraîchis au poll → position live poussée par l’app prestataire.
         /// Prestataire : soi = GPS local ; client = coords particulier (API).
         final LatLng? displayParticulier = isPrestataireView
-            ? remoteParticulier
-            : (_deviceLatLng ?? remoteParticulier);
+            ? (Utilities.useRealtimeLocation
+                  ? remoteParticulier
+                  : (_storedParticulierLatLng ?? remoteParticulier))
+            : (Utilities.useRealtimeLocation
+                  ? (_deviceLatLng ?? remoteParticulier)
+                  : (_storedParticulierLatLng ?? remoteParticulier));
         final LatLng? displayPrestataire = isPrestataireView
-            ? (_deviceLatLng ?? remotePrestataire)
-            : remotePrestataire;
+            ? (Utilities.useRealtimeLocation
+                  ? (_deviceLatLng ?? remotePrestataire)
+                  : (_storedPrestataireLatLng ?? remotePrestataire))
+            : (Utilities.useRealtimeLocation
+                  ? remotePrestataire
+                  : (_storedPrestataireLatLng ?? remotePrestataire));
+        _lastDisplayedParticulier = displayParticulier;
+        _lastDisplayedPrestataire = displayPrestataire;
 
         const LatLng defaultCenter = LatLng(14.7167, -17.4677);
         LatLng center;
@@ -130,174 +189,239 @@ class _DeroulementPrestationState extends State<DeroulementPrestation> {
           center = defaultCenter;
         }
 
-        final markers = <Marker>[];
+        final markers = <Marker>{};
         if (displayPrestataire != null) {
           markers.add(
             Marker(
-              key: ValueKey(
+              markerId: MarkerId(
                 'prest_${displayPrestataire.latitude}_${displayPrestataire.longitude}',
               ),
-              point: displayPrestataire,
-              width: SizeConfig.blockSizeHorizontal * 8,
-              height: SizeConfig.blockSizeHorizontal * 8,
-              child: const Icon(Icons.home_repair_service, color: Colors.red),
+              position: displayPrestataire,
+              icon: BitmapDescriptor.defaultMarkerWithHue(
+                BitmapDescriptor.hueAzure,
+              ),
+              infoWindow: const InfoWindow(title: 'Prestataire'),
             ),
           );
         }
         if (displayParticulier != null) {
           markers.add(
             Marker(
-              key: ValueKey(
+              markerId: MarkerId(
                 'part_${displayParticulier.latitude}_'
                 '${displayParticulier.longitude}',
               ),
-              point: displayParticulier,
-              width: SizeConfig.blockSizeHorizontal * 8,
-              height: SizeConfig.blockSizeHorizontal * 8,
-              child: const Icon(Icons.person_pin_circle, color: Colors.blue),
+              position: displayParticulier,
+              icon: BitmapDescriptor.defaultMarkerWithHue(
+                BitmapDescriptor.hueRed,
+              ),
+              infoWindow: const InfoWindow(title: 'Particulier'),
             ),
           );
         }
 
-        return Scaffold(
-          backgroundColor: Colors.white,
-          appBar: AppBar(
-            backgroundColor: Colors.white,
-            elevation: 0,
-            leadingWidth: 0,
-            leading: const SizedBox.shrink(),
-            title: Row(
-              children: [
-                Image.asset(
-                  '${Utilities().imagePath}logo.png',
-                  height: SizeConfig.blockSizeVertical * 4,
-                  fit: BoxFit.contain,
-                ),
-                SizedBox(width: SizeConfig.blockSizeHorizontal * 2),
-                Expanded(
-                  child: Text(
-                    prenom.isNotEmpty ? 'details_welcome_name'.tr(namedArgs: {'name': prenom}) : 'details_welcome'.tr(),
-                    style: TextStyle(
-                      color: Colors.black,
-                      fontSize: SizeConfig.fontSize(
-                        SizeConfig.blockSizeHorizontal * 4,
-                      ),
-                      fontWeight: FontWeight.w600,
-                    ),
-                    overflow: TextOverflow.ellipsis,
-                  ),
-                ),
-              ],
-            ),
-            actions: [
-              IconButton(
-                icon: Stack(
-                  clipBehavior: Clip.none,
+        return Stack(
+          children: [
+            Scaffold(
+              backgroundColor: Colors.white,
+              appBar: AppBar(
+                backgroundColor: Colors.white,
+                elevation: 0,
+                leadingWidth: 0,
+                leading: const SizedBox.shrink(),
+                title: Row(
                   children: [
-                    const Icon(Icons.notifications),
-                    if (_hasNewNotifications)
-                      Positioned(
-                        top: 3,
-                        right: 2,
-                        child: Container(
-                          width: 8,
-                          height: 8,
-                          decoration: BoxDecoration(
-                            color: Utilities().colorYellow,
-                            shape: BoxShape.circle,
-                            border: Border.all(color: Colors.white, width: 1),
+                    Image.asset(
+                      '${Utilities().imagePath}logo.png',
+                      height: SizeConfig.blockSizeVertical * 4,
+                      fit: BoxFit.contain,
+                    ),
+                    SizedBox(width: SizeConfig.blockSizeHorizontal * 2),
+                    Expanded(
+                      child: Text(
+                        prenom.isNotEmpty
+                            ? 'details_welcome_name'.tr(
+                                namedArgs: {'name': prenom},
+                              )
+                            : 'details_welcome'.tr(),
+                        style: TextStyle(
+                          color: Colors.black,
+                          fontSize: SizeConfig.fontSize(
+                            SizeConfig.blockSizeHorizontal * 4,
                           ),
+                          fontWeight: FontWeight.w600,
                         ),
+                        overflow: TextOverflow.ellipsis,
                       ),
+                    ),
                   ],
                 ),
-                color: Colors.black,
-                onPressed: () {
-                  Navigator.push(
-                    context,
-                    MaterialPageRoute(
-                      builder: (_) => const NotificationListScreen(),
-                    ),
-                  );
-                },
-              ),
-              isPrestataireView
-                  ? SizedBox.shrink()
-                  : IconButton(
-                      icon: const Icon(Icons.person),
-                      color: Colors.black,
-                      onPressed: () {
-                        Navigator.push(
-                          context,
-                          MaterialPageRoute(
-                            builder: (context) => ProfilParticulier(),
+                actions: [
+                  IconButton(
+                    icon: Stack(
+                      clipBehavior: Clip.none,
+                      children: [
+                        const Icon(Icons.notifications),
+                        if (_hasNewNotifications)
+                          Positioned(
+                            top: 3,
+                            right: 2,
+                            child: Container(
+                              width: 8,
+                              height: 8,
+                              decoration: BoxDecoration(
+                                color: Utilities().colorYellow,
+                                shape: BoxShape.circle,
+                                border: Border.all(
+                                  color: Colors.white,
+                                  width: 1,
+                                ),
+                              ),
+                            ),
                           ),
-                        );
+                      ],
+                    ),
+                    color: Colors.black,
+                    onPressed: () {
+                      Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                          builder: (_) => const NotificationListScreen(),
+                        ),
+                      );
+                    },
+                  ),
+                  isPrestataireView
+                      ? SizedBox.shrink()
+                      : IconButton(
+                          icon: const Icon(Icons.person),
+                          color: Colors.black,
+                          onPressed: () {
+                            Navigator.push(
+                              context,
+                              MaterialPageRoute(
+                                builder: (context) => ProfilParticulier(),
+                              ),
+                            );
+                          },
+                        ),
+                ],
+              ),
+              body: Stack(
+                children: [
+                  Positioned.fill(
+                    child: _DeroulementMap(
+                      center: center,
+                      markers: markers,
+                      from: displayParticulier,
+                      to: displayPrestataire,
+                      onMapCreated: (controller) => _mapController = controller,
+                      onRouteReady: () {
+                        if (!mounted || !_mapInitialLoading) return;
+                        setState(() => _mapInitialLoading = false);
                       },
                     ),
-            ],
-          ),
-          body: Stack(
-            children: [
-              Positioned.fill(
-                child: FlutterMap(
-                  mapController: _mapController,
-                  options: MapOptions(initialCenter: center, initialZoom: 15),
-                  children: [
-                    TileLayer(
-                      urlTemplate:
-                          'https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png',
-                      subdomains: const ['a', 'b', 'c', 'd'],
-                      userAgentPackageName: 'milleservices',
+                  ),
+                  Container(
+                    height: SizeConfig.blockSizeVertical * 58,
+                    width: SizeConfig.blockSizeHorizontal * 95,
+                    margin: EdgeInsets.only(
+                      left: SizeConfig.blockSizeHorizontal * 2.5,
+                      right: SizeConfig.blockSizeHorizontal * 2.5,
+                      top: SizeConfig.blockSizeVertical * 35,
                     ),
-                    if (displayParticulier != null && displayPrestataire != null)
-                      RoadRoutePolylineLayer(
-                        key: ValueKey(
-                          'route_${prestation.id}_${displayParticulier.latitude}_${displayParticulier.longitude}_${displayPrestataire.latitude}_${displayPrestataire.longitude}',
+                    decoration: BoxDecoration(
+                      color: Colors.white,
+                      borderRadius: BorderRadius.only(
+                        topLeft: Radius.circular(
+                          SizeConfig.blockSizeHorizontal * 8,
                         ),
-                        from: displayParticulier,
-                        to: displayPrestataire,
-                        color: Colors.red,
-                        strokeWidth: 4,
+                        topRight: Radius.circular(
+                          SizeConfig.blockSizeHorizontal * 8,
+                        ),
                       ),
-                    if (markers.isNotEmpty) MarkerLayer(markers: markers),
-                  ],
-                ),
-              ),
-              Container(
-                height: SizeConfig.blockSizeVertical * 58,
-                width: SizeConfig.blockSizeHorizontal * 95,
-                margin: EdgeInsets.only(
-                  left: SizeConfig.blockSizeHorizontal * 2.5,
-                  right: SizeConfig.blockSizeHorizontal * 2.5,
-                  top: SizeConfig.blockSizeVertical * 35,
-                ),
-                decoration: BoxDecoration(
-                  color: Colors.white,
-                  borderRadius: BorderRadius.only(
-                    topLeft: Radius.circular(
-                      SizeConfig.blockSizeHorizontal * 8,
+                      boxShadow: [
+                        BoxShadow(
+                          color: Colors.black.withValues(alpha: 0.1),
+                          blurRadius: 10,
+                          offset: const Offset(0, -2),
+                        ),
+                      ],
                     ),
-                    topRight: Radius.circular(
-                      SizeConfig.blockSizeHorizontal * 8,
+                    child: _buildContentForStatut(
+                      prestation,
+                      displayParticulier: displayParticulier,
+                      displayPrestataire: displayPrestataire,
                     ),
                   ),
-                  boxShadow: [
-                    BoxShadow(
-                      color: Colors.black.withOpacity(0.1),
-                      blurRadius: 10,
-                      offset: const Offset(0, -2),
+                  Positioned(
+                    right: SizeConfig.blockSizeHorizontal * 4,
+                    top: SizeConfig.blockSizeVertical * 28,
+                    child: FloatingActionButton.small(
+                      heroTag: 'recenter_particulier_btn',
+                      backgroundColor: Colors.white,
+                      foregroundColor: Utilities().colorBlueDark,
+                      elevation: 3,
+                      onPressed: () {
+                        final target = _lastDisplayedParticulier;
+                        if (target == null) {
+                          Utilities().showMesage(
+                            context,
+                            'error',
+                            'Position du particulier indisponible',
+                          );
+                          return;
+                        }
+                        final other = _lastDisplayedPrestataire;
+                        if (other != null) {
+                          _fitCameraToPoints(target, other);
+                        } else {
+                          _mapController?.animateCamera(
+                            CameraUpdate.newLatLngZoom(target, 15),
+                          );
+                        }
+                      },
+                      child: const Icon(Icons.my_location),
                     ),
-                  ],
-                ),
-                child: _buildContentForStatut(
-                  prestation,
-                  displayParticulier: displayParticulier,
-                  displayPrestataire: displayPrestataire,
+                  ),
+                ],
+              ),
+            ),
+            if (_mapInitialLoading)
+              Positioned.fill(
+                child: BackdropFilter(
+                  filter: ImageFilter.blur(sigmaX: 6, sigmaY: 6),
+                  child: Container(
+                    color: Colors.black.withValues(alpha: 0.22),
+                    child: Center(
+                      child: Container(
+                        padding: EdgeInsets.symmetric(
+                          horizontal: SizeConfig.blockSizeHorizontal * 6,
+                          vertical: SizeConfig.blockSizeVertical * 2,
+                        ),
+                        decoration: BoxDecoration(
+                          color: Colors.white.withValues(alpha: 0.55),
+                          borderRadius: BorderRadius.circular(
+                            SizeConfig.blockSizeHorizontal * 4,
+                          ),
+                          border: Border.all(
+                            color: Colors.white.withValues(alpha: 0.8),
+                          ),
+                        ),
+                        child: Column(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            CircularProgressIndicator(
+                              color: Utilities().colorBlueDark,
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ),
                 ),
               ),
-            ],
-          ),
+          ],
         );
       },
     );
@@ -489,14 +613,14 @@ class _DeroulementPrestationState extends State<DeroulementPrestation> {
     LatLng? displayParticulier,
     LatLng? displayPrestataire,
   }) {
-    final partLat = displayParticulier?.latitude ??
-        prestation.particulier?.latitude;
-    final partLng = displayParticulier?.longitude ??
-        prestation.particulier?.longitude;
-    final prestLat = displayPrestataire?.latitude ??
-        prestation.prestataire?.latitude;
-    final prestLng = displayPrestataire?.longitude ??
-        prestation.prestataire?.longitude;
+    final partLat =
+        displayParticulier?.latitude ?? prestation.particulier?.latitude;
+    final partLng =
+        displayParticulier?.longitude ?? prestation.particulier?.longitude;
+    final prestLat =
+        displayPrestataire?.latitude ?? prestation.prestataire?.latitude;
+    final prestLng =
+        displayPrestataire?.longitude ?? prestation.prestataire?.longitude;
 
     final distanceKm =
         (partLat != null &&
@@ -785,6 +909,9 @@ class _DeroulementPrestationState extends State<DeroulementPrestation> {
       body = '';
     }
 
+    final shouldShowExecutionTimer =
+        !isEnAttente && !isRefusee && !isTerminee && !isPayee;
+
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
@@ -834,6 +961,37 @@ class _DeroulementPrestationState extends State<DeroulementPrestation> {
                 ),
               )
             : SizedBox.shrink(),
+        if (shouldShowExecutionTimer) ...[
+          SizedBox(height: SizeConfig.blockSizeVertical * 1),
+          Center(
+            child: Text(
+              'Durée prestation: ${_formatElapsedExecution(prestation)}',
+              style: TextStyle(
+                fontSize: SizeConfig.fontSize(
+                  SizeConfig.blockSizeHorizontal * 3.5,
+                ),
+                fontWeight: FontWeight.w600,
+                color: Utilities().colorBlueDark,
+              ),
+            ),
+          ),
+        ],
+        if (isTerminee && !isPrestataire) ...[
+          SizedBox(height: SizeConfig.blockSizeVertical * 1),
+          Center(
+            child: Text(
+              'Montant à payer: ${_money(_computedMontantAPayer(prestation))}',
+              style: TextStyle(
+                fontSize: SizeConfig.fontSize(
+                  SizeConfig.blockSizeHorizontal * 3.6,
+                ),
+                fontWeight: FontWeight.w700,
+                color: Utilities().colorBlueDark,
+              ),
+              textAlign: TextAlign.center,
+            ),
+          ),
+        ],
         if (isPrestataire && isAcceptee) ...[
           SizedBox(height: SizeConfig.blockSizeVertical * 1),
           Center(
@@ -952,16 +1110,6 @@ class _DeroulementPrestationState extends State<DeroulementPrestation> {
     );
   }
 
-  Future<double?> _showMontantPaiementDialog(Prestation prestation) {
-    final tarif = prestation.service?.tarifHoraire;
-    final budget = prestation.budget;
-    return showDialog<double>(
-      context: context,
-      barrierDismissible: false,
-      builder: (ctx) => _MontantPaiementDialog(tarif: tarif, budget: budget),
-    );
-  }
-
   Future<void> _waitForNextFrame() {
     final completer = Completer<void>();
     WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -971,7 +1119,8 @@ class _DeroulementPrestationState extends State<DeroulementPrestation> {
   }
 
   Future<void> _onPayerIci(Prestation prestation) async {
-    final token = context.read<UserProvider>().token;
+    final userProvider = context.read<UserProvider>();
+    final token = userProvider.token;
     if (token == null || token.isEmpty) {
       Utilities().showMesage(
         context,
@@ -980,35 +1129,205 @@ class _DeroulementPrestationState extends State<DeroulementPrestation> {
       );
       return;
     }
-    final montant = await _showMontantPaiementDialog(prestation);
-    if (!mounted || montant == null) return;
-    // Évite « dirty widget / wrong build scope » : laisser la route se fermer
-    // avant notifyListeners (stream prestation) + suite du build parent.
-    await _waitForNextFrame();
-    if (!mounted) return;
-    final result = await context
-        .read<PrestationsProvider>()
-        .marquerPayeeEtRafraichir(
-          prestation.id,
-          token,
-          montant: montant,
-        );
-    if (!mounted) return;
-    if (result.success) {
-      Utilities().showMesage(
-        context,
-        'success',
-        'deroulement_marked_paid'.tr(),
-      );
-    } else {
+    final montant = _computedMontantAPayer(prestation);
+    if (montant <= 0) {
       Utilities().showMesage(
         context,
         'error',
-        result.message?.isNotEmpty == true
-            ? result.message!
+        'Montant de paiement indisponible pour cette prestation.',
+      );
+      return;
+    }
+    await _waitForNextFrame();
+    if (!mounted) return;
+    final init = await PrestationsController.instance.initPaydunyaPaiement(
+      token,
+      prestation.id,
+    );
+    if (!mounted) return;
+    if (init.success != true || init.data is! Map) {
+      Utilities().showMesage(
+        context,
+        'error',
+        init.message?.toString().isNotEmpty == true
+            ? init.message.toString()
             : 'deroulement_mark_paid_error'.tr(),
       );
+      return;
     }
+    final initMap = Map<String, dynamic>.from(init.data as Map);
+    final invoiceToken = initMap['invoiceToken']?.toString().trim();
+    final checkoutUrlFallback = initMap['checkoutUrl']?.toString().trim();
+    if (invoiceToken == null || invoiceToken.isEmpty) {
+      Utilities().showMesage(
+        context,
+        'error',
+        'Facture PayDunya indisponible. Réessayez.',
+      );
+      return;
+    }
+    final user = userProvider.user;
+    final ctl = PrestationsController.instance;
+    final paid = await showModalBottomSheet<bool>(
+      context: context,
+      isScrollControlled: true,
+      useSafeArea: false,
+      backgroundColor: Colors.transparent,
+      clipBehavior: Clip.antiAlias,
+      shape: RoundedRectangleBorder(
+        borderRadius: PaiementSoftPaySheet.topBorderRadius,
+      ),
+      builder: (ctx) => PaiementSoftPaySheet(
+        invoiceToken: invoiceToken,
+        checkoutUrlFallback: checkoutUrlFallback ?? '',
+        initialPrenom: user?.prenom?.toString() ?? '',
+        initialNom: user?.nom?.toString() ?? '',
+        initialTelephone: user?.telephone?.toString() ?? '',
+        email: user?.email?.toString(),
+        montantLabel: _money(montant),
+        onSoftPay:
+            ({
+              required String method,
+              required String prenom,
+              required String nom,
+              required String telephone,
+              String? email,
+            }) async {
+              switch (method) {
+                case 'wave_sn':
+                  return ctl.payWithWaveSn(
+                    token: token,
+                    prestationId: prestation.id,
+                    invoiceToken: invoiceToken,
+                    prenom: prenom,
+                    nom: nom,
+                    telephone: telephone,
+                    email: email,
+                  );
+                case 'orange_money_sn':
+                  return ctl.payWithOrangeMoneySn(
+                    token: token,
+                    prestationId: prestation.id,
+                    invoiceToken: invoiceToken,
+                    prenom: prenom,
+                    nom: nom,
+                    telephone: telephone,
+                    email: email,
+                  );
+                case 'free_money_sn':
+                  return ctl.payWithFreeMoneySn(
+                    token: token,
+                    prestationId: prestation.id,
+                    invoiceToken: invoiceToken,
+                    prenom: prenom,
+                    nom: nom,
+                    telephone: telephone,
+                    email: email,
+                  );
+                default:
+                  return ResponseData(
+                    success: false,
+                    message: 'Moyen inconnu',
+                    data: null,
+                    status: 400,
+                    emailNotVerified: false,
+                  );
+              }
+            },
+      ),
+    );
+    if (!mounted || paid != true) return;
+    Utilities().showMesage(
+      context,
+      'success',
+      'La prestation passera en « payée » après confirmation PayDunya.',
+    );
+    await _pollPrestationPayeeOrTimeout(prestation.id, token);
+  }
+
+  Future<void> _pollPrestationPayeeOrTimeout(
+    String prestationId,
+    String token,
+  ) async {
+    final provider = context.read<PrestationsProvider>();
+    for (var i = 0; i < 40; i++) {
+      await Future<void>.delayed(const Duration(seconds: 4));
+      if (!mounted) return;
+      final res = await PrestationsController.instance.getPrestationById(
+        token,
+        prestationId,
+      );
+      if (res.success == true && res.data is Map) {
+        final p = Prestation.fromJson(
+          Map<String, dynamic>.from(res.data as Map),
+        );
+        if (p.isPayee) {
+          await provider.fetchPrestationOnceAndEmit(prestationId, token);
+          if (!mounted) return;
+          Utilities().showMesage(
+            context,
+            'success',
+            'deroulement_marked_paid'.tr(),
+          );
+          return;
+        }
+      }
+    }
+    if (mounted) {
+      await provider.fetchPrestationOnceAndEmit(prestationId, token);
+      if (!mounted) return;
+      Utilities().showMesage(
+        context,
+        'error',
+        'Paiement non confirmé dans le délai. Réessayez ou actualisez.',
+      );
+    }
+  }
+
+  DateTime? _durationStart(Prestation p) {
+    return p.acceptedAt ?? p.createdAt;
+  }
+
+  double _executionHours(Prestation p) {
+    final start = _durationStart(p);
+    if (start == null) return 1.0;
+    final isClosed = p.isTerminee || p.isPayee || p.isRefusee || p.isAnnulee;
+    final end = (isClosed && p.completedAt != null)
+        ? p.completedAt!
+        : DateTime.now();
+    final minutes = end.difference(start).inMinutes;
+    if (minutes <= 0) return 1.0;
+    return minutes / 60.0;
+  }
+
+  /// Tarif catalogue (FCFA/h) × durée (h) + frais de service + frais de déplacement (aligné backend).
+  double _computedMontantAPayer(Prestation p) {
+    final tarif = p.service?.tarifHoraire;
+    if (tarif == null || tarif <= 0) return 0;
+    return computePrestationBilling(
+      tarifHoraireFcfa: tarif,
+      executionHours: _executionHours(p),
+    ).totalToPayFcfa;
+  }
+
+  String _money(double value) {
+    final n = value.round();
+    return '${n.toString()} FCFA';
+  }
+
+  String _formatElapsedExecution(Prestation p) {
+    final start = _durationStart(p);
+    if (start == null) return '00:00:00';
+    final isClosed = p.isTerminee || p.isPayee || p.isRefusee || p.isAnnulee;
+    final end = (isClosed && p.completedAt != null)
+        ? p.completedAt!
+        : DateTime.now();
+    var elapsed = end.difference(start);
+    if (elapsed.isNegative) elapsed = Duration.zero;
+    final h = elapsed.inHours.toString().padLeft(2, '0');
+    final m = (elapsed.inMinutes % 60).toString().padLeft(2, '0');
+    final s = (elapsed.inSeconds % 60).toString().padLeft(2, '0');
+    return '$h:$m:$s';
   }
 
   Future<void> _onArriveADestination(Prestation prestation) async {
@@ -1038,11 +1357,7 @@ class _DeroulementPrestationState extends State<DeroulementPrestation> {
       return;
     }
     // Le polling de PrestationsProvider mettra à jour l'écran automatiquement.
-    Utilities().showMesage(
-      context,
-      'success',
-      'deroulement_now_ongoing'.tr(),
-    );
+    Utilities().showMesage(context, 'success', 'deroulement_now_ongoing'.tr());
   }
 
   Future<void> _onCallPressed(
@@ -1080,11 +1395,7 @@ class _DeroulementPrestationState extends State<DeroulementPrestation> {
   ) async {
     // Chat en temps réel non encore implémenté.
     // On affiche un message d'information pour l'instant.
-    Utilities().showMesage(
-      context,
-      'infos',
-      'deroulement_messaging_soon'.tr(),
-    );
+    Utilities().showMesage(context, 'infos', 'deroulement_messaging_soon'.tr());
   }
 
   Future<void> _onTerminerPrestation(Prestation prestation) async {
@@ -1119,117 +1430,236 @@ class _DeroulementPrestationState extends State<DeroulementPrestation> {
       'deroulement_marked_completed'.tr(),
     );
   }
+
+  Future<void> _fitCameraToPoints(LatLng a, LatLng b) async {
+    final controller = _mapController;
+    if (controller == null) return;
+    final minLat = math.min(a.latitude, b.latitude);
+    final maxLat = math.max(a.latitude, b.latitude);
+    final minLng = math.min(a.longitude, b.longitude);
+    final maxLng = math.max(a.longitude, b.longitude);
+    try {
+      await controller.animateCamera(
+        CameraUpdate.newLatLngBounds(
+          LatLngBounds(
+            southwest: LatLng(minLat, minLng),
+            northeast: LatLng(maxLat, maxLng),
+          ),
+          70,
+        ),
+      );
+    } catch (_) {
+      await controller.animateCamera(CameraUpdate.newLatLngZoom(a, 15));
+    }
+  }
 }
 
-String _formatMontantPaiementDefault(double value) {
-  final r = value.round();
-  if ((value - r).abs() < 1e-6) return r.toString();
-  return value.toStringAsFixed(2);
-}
+class _DeroulementMap extends StatefulWidget {
+  final LatLng center;
+  final Set<Marker> markers;
+  final LatLng? from;
+  final LatLng? to;
+  final void Function(GoogleMapController controller)? onMapCreated;
+  final VoidCallback? onRouteReady;
 
-double? _parseMontantPaiementField(String raw) {
-  if (raw.trim().isEmpty) return null;
-  final cleaned = raw
-      .replaceAll(RegExp(r'[\s\u00A0]'), '')
-      .replaceAll(',', '.');
-  return double.tryParse(cleaned);
-}
-
-/// Dialogue montant : [TextEditingController] possédé par un State (dispose sûr).
-class _MontantPaiementDialog extends StatefulWidget {
-  const _MontantPaiementDialog({this.tarif, this.budget});
-
-  final double? tarif;
-  final double? budget;
+  const _DeroulementMap({
+    required this.center,
+    required this.markers,
+    required this.from,
+    required this.to,
+    this.onMapCreated,
+    this.onRouteReady,
+  });
 
   @override
-  State<_MontantPaiementDialog> createState() => _MontantPaiementDialogState();
+  State<_DeroulementMap> createState() => _DeroulementMapState();
 }
 
-class _MontantPaiementDialogState extends State<_MontantPaiementDialog> {
-  late final TextEditingController _controller;
-  final GlobalKey<FormState> _formKey = GlobalKey<FormState>();
+class _DeroulementMapState extends State<_DeroulementMap> {
+  List<LatLng>? _routePoints;
+  String? _routeKey;
+  DateTime? _lastRouteFetchAt;
+  LatLng? _lastFromForFetch;
+  LatLng? _lastToForFetch;
+  GoogleMapController? _internalMapController;
+  Timer? _routeThrottleTimer;
+  Timer? _routeRetryTimer;
+  bool _routeReadyNotified = false;
+  static const Duration _minRouteFetchInterval = Duration(seconds: 20);
+  static const Duration _routeRetryDelay = Duration(seconds: 8);
+  static const double _minMoveMetersForRouteRefresh = 120;
 
   @override
   void initState() {
     super.initState();
-    final suggestion = widget.budget ?? widget.tarif;
-    final hasSuggestion =
-        suggestion != null && suggestion > 0 && !suggestion.isNaN;
-    _controller = TextEditingController(
-      text: hasSuggestion ? _formatMontantPaiementDefault(suggestion) : '',
-    );
+    _fetchRouteIfNeeded();
+  }
+
+  @override
+  void didUpdateWidget(covariant _DeroulementMap oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.from != widget.from || oldWidget.to != widget.to) {
+      _fetchRouteIfNeeded();
+      _fitCameraToRouteOrPoints();
+    }
   }
 
   @override
   void dispose() {
-    _controller.dispose();
+    _routeThrottleTimer?.cancel();
+    _routeRetryTimer?.cancel();
+    _internalMapController?.dispose();
     super.dispose();
+  }
+
+  bool _movedEnoughSinceLastFetch(LatLng from, LatLng to) {
+    final prevFrom = _lastFromForFetch;
+    final prevTo = _lastToForFetch;
+    if (prevFrom == null || prevTo == null) return true;
+    final fromMoved = _distanceMeters(prevFrom, from);
+    final toMoved = _distanceMeters(prevTo, to);
+    return fromMoved >= _minMoveMetersForRouteRefresh ||
+        toMoved >= _minMoveMetersForRouteRefresh;
+  }
+
+  double _distanceMeters(LatLng a, LatLng b) {
+    const earthRadius = 6371000.0;
+    final dLat = (b.latitude - a.latitude) * (math.pi / 180);
+    final dLng = (b.longitude - a.longitude) * (math.pi / 180);
+    final lat1 = a.latitude * (math.pi / 180);
+    final lat2 = b.latitude * (math.pi / 180);
+    final h =
+        math.sin(dLat / 2) * math.sin(dLat / 2) +
+        math.cos(lat1) *
+            math.cos(lat2) *
+            math.sin(dLng / 2) *
+            math.sin(dLng / 2);
+    return 2 * earthRadius * math.atan2(math.sqrt(h), math.sqrt(1 - h));
+  }
+
+  Future<void> _fetchRouteIfNeeded() async {
+    final from = widget.from;
+    final to = widget.to;
+    if (from == null || to == null) {
+      setState(() => _routePoints = null);
+      return;
+    }
+    final key =
+        '${from.latitude},${from.longitude};${to.latitude},${to.longitude}';
+    if (_routeKey == key && _routePoints != null) return;
+    final keyChanged = _routeKey != key;
+
+    final movedEnough = _movedEnoughSinceLastFetch(from, to);
+    final now = DateTime.now();
+    final lastAt = _lastRouteFetchAt;
+    final canFetchNow =
+        lastAt == null || now.difference(lastAt) >= _minRouteFetchInterval;
+    if (!keyChanged && !movedEnough && !canFetchNow) return;
+
+    if (!keyChanged && !canFetchNow) {
+      final wait = _minRouteFetchInterval - now.difference(lastAt);
+      _routeThrottleTimer?.cancel();
+      _routeThrottleTimer = Timer(wait, () {
+        if (mounted) _fetchRouteIfNeeded();
+      });
+      return;
+    }
+
+    _routeRetryTimer?.cancel();
+    _lastRouteFetchAt = now;
+    _lastFromForFetch = from;
+    _lastToForFetch = to;
+    final points = await GoogleRouteService.fetchDrivingRoute(from, to);
+    if (!mounted) return;
+    if (points != null && points.length >= 2) {
+      _routeKey = key;
+      setState(() => _routePoints = points);
+      _fitCameraToRouteOrPoints();
+      if (!_routeReadyNotified) {
+        _routeReadyNotified = true;
+        widget.onRouteReady?.call();
+      }
+      return;
+    }
+    // Ne pas figer l'état sur un échec ponctuel : on retente.
+    _routeKey = null;
+    _routeRetryTimer = Timer(_routeRetryDelay, () {
+      if (mounted) _fetchRouteIfNeeded();
+    });
+  }
+
+  Future<void> _fitCameraToRouteOrPoints() async {
+    final controller = _internalMapController;
+    if (controller == null) return;
+    final line = _routePoints;
+    final points = (line != null && line.length >= 2)
+        ? line
+        : <LatLng>[
+            if (widget.from != null) widget.from!,
+            if (widget.to != null) widget.to!,
+          ];
+    if (points.length < 2) return;
+
+    double minLat = points.first.latitude;
+    double maxLat = points.first.latitude;
+    double minLng = points.first.longitude;
+    double maxLng = points.first.longitude;
+    for (final p in points.skip(1)) {
+      if (p.latitude < minLat) minLat = p.latitude;
+      if (p.latitude > maxLat) maxLat = p.latitude;
+      if (p.longitude < minLng) minLng = p.longitude;
+      if (p.longitude > maxLng) maxLng = p.longitude;
+    }
+    try {
+      await controller.animateCamera(
+        CameraUpdate.newLatLngBounds(
+          LatLngBounds(
+            southwest: LatLng(minLat, minLng),
+            northeast: LatLng(maxLat, maxLng),
+          ),
+          70,
+        ),
+      );
+    } catch (_) {
+      // Peut échouer avant le layout complet de la map: on ignore silencieusement.
+    }
   }
 
   @override
   Widget build(BuildContext context) {
-    final tarif = widget.tarif;
-    final hint = tarif != null && tarif > 0
-        ? 'deroulement_pay_amount_tarif_ref'.tr(
-            namedArgs: {'tarif': tarif.toStringAsFixed(0)},
-          )
-        : 'deroulement_pay_amount_no_tarif'.tr();
+    List<LatLng>? line = _routePoints;
+    if (line != null &&
+        line.length >= 2 &&
+        widget.from != null &&
+        widget.to != null) {
+      // Assure un raccord visuel exact aux marqueurs source/destination.
+      line = <LatLng>[widget.from!, ...line, widget.to!];
+    }
+    final polylines = <Polyline>{};
+    if (line != null && line.length >= 2) {
+      polylines.add(
+        Polyline(
+          polylineId: const PolylineId('main_route'),
+          points: line,
+          width: 5,
+          color: _routePoints != null ? Colors.blue : Colors.red,
+        ),
+      );
+    }
 
-    return AlertDialog(
-      title: Text('deroulement_pay_amount_title'.tr()),
-      content: Form(
-        key: _formKey,
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            Text(
-              hint,
-              style: TextStyle(
-                fontSize: SizeConfig.fontSize(
-                  SizeConfig.blockSizeHorizontal * 3.2,
-                ),
-                color: Colors.black54,
-              ),
-            ),
-            SizedBox(height: SizeConfig.blockSizeVertical * 1.5),
-            TextFormField(
-              controller: _controller,
-              keyboardType: const TextInputType.numberWithOptions(
-                decimal: true,
-              ),
-              decoration: InputDecoration(
-                labelText: 'deroulement_pay_amount_label'.tr(),
-                suffixText: 'FCFA',
-                border: const OutlineInputBorder(),
-              ),
-              validator: (value) {
-                final n = _parseMontantPaiementField(value ?? '');
-                if (n == null || n <= 0) {
-                  return 'deroulement_pay_amount_invalid'.tr();
-                }
-                return null;
-              },
-            ),
-          ],
-        ),
-      ),
-      actions: [
-        TextButton(
-          onPressed: () => Navigator.of(context).pop(),
-          child: Text('deroulement_pay_cancel'.tr()),
-        ),
-        TextButton(
-          onPressed: () {
-            if (_formKey.currentState?.validate() != true) return;
-            final n = _parseMontantPaiementField(_controller.text);
-            if (n == null || n <= 0) return;
-            Navigator.of(context).pop(n);
-          },
-          child: Text('deroulement_pay_confirm'.tr()),
-        ),
-      ],
+    return GoogleMap(
+      initialCameraPosition: CameraPosition(target: widget.center, zoom: 15),
+      style: kGrayMapStyle,
+      onMapCreated: (controller) {
+        _internalMapController = controller;
+        widget.onMapCreated?.call(controller);
+        _fitCameraToRouteOrPoints();
+      },
+      markers: widget.markers,
+      polylines: polylines,
+      myLocationButtonEnabled: false,
+      zoomControlsEnabled: false,
+      mapToolbarEnabled: false,
     );
   }
 }

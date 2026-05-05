@@ -7,6 +7,7 @@ import 'package:flutter_spinkit/flutter_spinkit.dart';
 import 'package:milleservices/controllers/authController.dart';
 import 'package:milleservices/controllers/prestatairesController.dart';
 import 'package:milleservices/providers/userProvider.dart';
+import 'package:milleservices/screens/welcome.dart';
 import 'package:milleservices/services/pick_file_name.dart';
 import 'package:milleservices/services/sizeConfig.dart';
 import 'package:milleservices/services/utilities.dart';
@@ -200,6 +201,21 @@ class _PrestataireDocumentsRefusesState
           'validate_doc_title'.tr(),
           style: TextStyle(color: Colors.black, fontWeight: FontWeight.w600),
         ),
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.logout, color: Colors.red),
+            tooltip: 'Déconnexion',
+            onPressed: () async {
+              await context.read<UserProvider>().logout();
+              if (!context.mounted) return;
+              Navigator.pushAndRemoveUntil(
+                context,
+                MaterialPageRoute(builder: (context) => const Welcome()),
+                (route) => false,
+              );
+            },
+          ),
+        ],
       ),
       body: SafeArea(
         child: SingleChildScrollView(
@@ -374,9 +390,7 @@ class _PrestataireDocumentsRefusesState
               borderRadius: BorderRadius.circular(
                 SizeConfig.blockSizeHorizontal * 2,
               ),
-              border: Border.all(
-                color: Colors.redAccent.withOpacity(0.35),
-              ),
+              border: Border.all(color: Colors.redAccent.withOpacity(0.35)),
             ),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
@@ -518,7 +532,9 @@ class _PrestataireDocumentsRefusesState
         Utilities().showMesage(
           context,
           'error',
-          'validate_select_file_for'.tr(namedArgs: {'label': _labelForDoc(doc)}),
+          'validate_select_file_for'.tr(
+            namedArgs: {'label': _labelForDoc(doc)},
+          ),
         );
         return;
       }
@@ -556,7 +572,9 @@ class _PrestataireDocumentsRefusesState
             context,
             'error',
             up.error ??
-                'validate_upload_failed'.tr(namedArgs: {'label': _labelForDoc(doc)}),
+                'validate_upload_failed'.tr(
+                  namedArgs: {'label': _labelForDoc(doc)},
+                ),
           );
           return;
         }
@@ -585,11 +603,7 @@ class _PrestataireDocumentsRefusesState
       if (!mounted) return;
 
       if (res.success == true) {
-        Utilities().showMesage(
-          context,
-          'success',
-          'validate_docs_sent'.tr(),
-        );
+        Utilities().showMesage(context, 'success', 'validate_docs_sent'.tr());
         Navigator.of(context).pushReplacement(
           MaterialPageRoute<void>(
             builder: (_) => const PrestataireValidateProfil(),

@@ -6,6 +6,7 @@ import 'package:milleservices/controllers/authController.dart';
 import 'package:milleservices/controllers/prestatairesController.dart';
 import 'package:milleservices/providers/userProvider.dart';
 import 'package:milleservices/screens/prestataire/prestataire_validate_profil.dart';
+import 'package:milleservices/screens/welcome.dart';
 import 'package:milleservices/services/pick_file_name.dart';
 import 'package:milleservices/services/sizeConfig.dart';
 import 'package:milleservices/services/utilities.dart';
@@ -19,7 +20,8 @@ class PrestataireUploadDocuments extends StatefulWidget {
       _PrestataireUploadDocumentsState();
 }
 
-class _PrestataireUploadDocumentsState extends State<PrestataireUploadDocuments> {
+class _PrestataireUploadDocumentsState
+    extends State<PrestataireUploadDocuments> {
   final Map<String, PlatformFile?> _files = {};
   bool _isSubmitting = false;
 
@@ -46,8 +48,26 @@ class _PrestataireUploadDocumentsState extends State<PrestataireUploadDocuments>
         centerTitle: true,
         title: Text(
           'Uploader vos documents',
-          style: const TextStyle(color: Colors.black, fontWeight: FontWeight.w600),
+          style: const TextStyle(
+            color: Colors.black,
+            fontWeight: FontWeight.w600,
+          ),
         ),
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.logout, color: Colors.red),
+            tooltip: 'Déconnexion',
+            onPressed: () async {
+              await context.read<UserProvider>().logout();
+              if (!context.mounted) return;
+              Navigator.pushAndRemoveUntil(
+                context,
+                MaterialPageRoute(builder: (context) => const Welcome()),
+                (route) => false,
+              );
+            },
+          ),
+        ],
       ),
       body: SafeArea(
         child: SingleChildScrollView(
@@ -62,7 +82,9 @@ class _PrestataireUploadDocumentsState extends State<PrestataireUploadDocuments>
                 'Pour activer votre compte prestataire, merci de déposer tous les documents requis.',
                 textAlign: TextAlign.center,
                 style: TextStyle(
-                  fontSize: SizeConfig.fontSize(SizeConfig.blockSizeHorizontal * 3.5),
+                  fontSize: SizeConfig.fontSize(
+                    SizeConfig.blockSizeHorizontal * 3.5,
+                  ),
                   color: utilities.colorGreyDark,
                 ),
               ),
@@ -143,7 +165,7 @@ class _PrestataireUploadDocumentsState extends State<PrestataireUploadDocuments>
           onTap: onTap,
           child: CustomPaint(
             painter: _DashedBorderPainter(
-              color: utilities.colorBlueDark,
+              color: utilities.colorGreyDark,
               strokeWidth: 1.5,
               dashWidth: 6,
               dashSpace: 4,

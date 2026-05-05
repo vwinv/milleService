@@ -84,13 +84,13 @@ class Prestataire {
       noteMoyenne: (json['noteMoyenne'] ?? 0).toDouble(),
       noteSur: json['noteSur'] ?? 5,
       nbAvis: json['nbAvis'] ?? 0,
-      distanceMetres: json['distanceMetres'] ?? 0,
-      latitude: json['latitude'] != null
-          ? (json['latitude'] as num).toDouble()
-          : null,
-      longitude: json['longitude'] != null
-          ? (json['longitude'] as num).toDouble()
-          : null,
+      distanceMetres: _parseDistanceMetres(json),
+      latitude: _parseCoordinate(
+        json['latitude'] ?? json['lat'] ?? json['particulierLat'],
+      ),
+      longitude: _parseCoordinate(
+        json['longitude'] ?? json['lng'] ?? json['lon'] ?? json['particulierLng'],
+      ),
       services: servicesJson is List
           ? servicesJson
                 .whereType<Map<String, dynamic>>()
@@ -114,4 +114,23 @@ class Prestataire {
     if (tarifs.isEmpty) return null;
     return tarifs.reduce((a, b) => a < b ? a : b);
   }
+}
+
+int _parseDistanceMetres(Map<String, dynamic> json) {
+  final raw =
+      json['distanceMetres'] ?? json['distanceMeters'] ?? json['distance'];
+  if (raw is int) return raw;
+  if (raw is double) return raw.round();
+  if (raw is String) {
+    final parsed = double.tryParse(raw.trim());
+    if (parsed != null) return parsed.round();
+  }
+  return 0;
+}
+
+double? _parseCoordinate(dynamic raw) {
+  if (raw == null) return null;
+  if (raw is num) return raw.toDouble();
+  if (raw is String) return double.tryParse(raw.trim());
+  return null;
 }

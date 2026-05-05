@@ -11,6 +11,8 @@ plugins {
 dependencies {
   // Import the Firebase BoM
   implementation(platform("com.google.firebase:firebase-bom:34.11.0"))
+  implementation("androidx.multidex:multidex:2.0.1")
+  coreLibraryDesugaring("com.android.tools:desugar_jdk_libs:2.1.5")
 
 
   // TODO: Add the dependencies for Firebase products you want to use
@@ -30,6 +32,19 @@ val keystoreProperties = Properties().apply {
     }
 }
 
+val localProperties = Properties().apply {
+    val localPropertiesFile = rootProject.file("local.properties")
+    if (localPropertiesFile.exists()) {
+        load(localPropertiesFile.inputStream())
+    }
+}
+
+val googleMapsApiKey = (
+    localProperties.getProperty("google.maps.api.key")
+        ?: System.getenv("GOOGLE_MAPS_API_KEY")
+        ?: ""
+).trim()
+
 android {
     namespace = "com.mille.services"
     compileSdk = flutter.compileSdkVersion
@@ -38,6 +53,7 @@ android {
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_17
         targetCompatibility = JavaVersion.VERSION_17
+        isCoreLibraryDesugaringEnabled = true
     }
 
     kotlinOptions {
@@ -53,6 +69,8 @@ android {
         targetSdk = flutter.targetSdkVersion
         versionCode = flutter.versionCode
         versionName = flutter.versionName
+        multiDexEnabled = true
+        manifestPlaceholders["GOOGLE_MAPS_API_KEY"] = googleMapsApiKey
     }
 
     signingConfigs {

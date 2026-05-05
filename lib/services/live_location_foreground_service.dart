@@ -1,6 +1,7 @@
 import 'dart:io';
 
 import 'package:flutter/foundation.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_foreground_task/flutter_foreground_task.dart';
 import 'package:milleservices/models/user.dart';
 import 'package:milleservices/services/live_location_task_handler.dart';
@@ -58,9 +59,18 @@ class LiveLocationForegroundService {
     ensureConfigured();
 
     if (Platform.isAndroid) {
-      final np = await FlutterForegroundTask.checkNotificationPermission();
-      if (np != NotificationPermission.granted) {
-        await FlutterForegroundTask.requestNotificationPermission();
+      try {
+        final np = await FlutterForegroundTask.checkNotificationPermission();
+        if (np != NotificationPermission.granted) {
+          await FlutterForegroundTask.requestNotificationPermission();
+        }
+      } on PlatformException catch (e) {
+        // L'utilisateur peut fermer la popup Android 13+ (PermissionRequestCancelledException).
+        // On n'échoue pas bruyamment: on sort et on retentera plus tard.
+        debugPrint(
+          'LiveLocationForegroundService.permission: ${e.code} ${e.message}',
+        );
+        return;
       }
     }
 

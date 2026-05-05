@@ -11,7 +11,7 @@ import 'package:provider/provider.dart';
 /// Page d'historique des prestations.
 /// Elle reçoit une liste de prestations et les affiche
 /// sous forme de cartes. Carte différente selon le rôle :
-/// - PARTICULIER : prestataire, service, date, montant.
+/// - PARTICULIER : prestataire, service, date, tarif horaire.
 /// - PRESTATAIRE : nom client, type de prestation, budget, adresse, icône détail.
 class Historique extends StatelessWidget {
   final List<Prestation> prestations;
@@ -76,10 +76,9 @@ class Historique extends StatelessWidget {
     final prestataireNom = p.prestataire?.nom ?? '—';
     final serviceLibelle = p.service?.libelle ?? '';
     final date = _formatDate(p.createdAt ?? p.acceptedAt ?? p.completedAt);
-
-    // Pour l'instant, pas de montant dans le modèle de prestation.
-    // On affiche un placeholder ou à adapter quand le montant sera disponible.
-    const String montant = '— FCFA';
+    final montant = p.service?.tarifHoraire != null
+        ? '${p.service!.tarifHoraire!.toStringAsFixed(0)} FCFA/h'
+        : '— FCFA/h';
 
     return GestureDetector(
       onTap: () {

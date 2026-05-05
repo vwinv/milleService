@@ -1,8 +1,5 @@
-import 'dart:convert';
-
 import 'package:flutter/material.dart';
 import 'package:milleservices/services/sizeConfig.dart';
-import 'package:milleservices/services/utilities.dart';
 
 class CustomTextField extends StatelessWidget {
   final TextEditingController controller;
@@ -15,11 +12,11 @@ class CustomTextField extends StatelessWidget {
   final double height;
   final double width;
   final double radius;
-  Widget? prefixIcon;
-  String? Function(String?)? validator;
-  Color borderColor;
-  Color fillColor;
-  int? maxLines;
+  final Widget? prefixIcon;
+  final String? Function(String?)? validator;
+  final Color borderColor;
+  final Color fillColor;
+  final int? maxLines;
 
   CustomTextField({
     super.key,
@@ -42,6 +39,9 @@ class CustomTextField extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    // Garantit un minimum tactile lisible sur petits écrans.
+    final effectiveHeight = height < 48 ? 48.0 : height;
+
     return Padding(
       padding: EdgeInsets.symmetric(
         horizontal: SizeConfig.blockSizeHorizontal * 5,
@@ -53,7 +53,10 @@ class CustomTextField extends StatelessWidget {
         children: [
           Text(label, style: labelStyle),
           Container(
-            height: height,
+            height: maxLines != null && maxLines! > 1 ? null : effectiveHeight,
+            constraints: BoxConstraints(
+              minHeight: maxLines != null && maxLines! > 1 ? 0 : effectiveHeight,
+            ),
             width: width,
             padding: EdgeInsets.only(left: SizeConfig.blockSizeHorizontal * 5),
             decoration: BoxDecoration(
@@ -68,12 +71,13 @@ class CustomTextField extends StatelessWidget {
                     controller: controller,
                     style: textfieldStyle,
                     decoration: InputDecoration(
-                      labelText: placeholder,
+                      hintText: placeholder,
                       border: InputBorder.none,
-                      labelStyle: placeholderStyle,
+                      hintStyle: placeholderStyle,
                     ),
                     validator: validator,
                     obscureText: obscur,
+                    maxLines: obscur ? 1 : maxLines,
                   ),
                 ),
                 prefixIcon == null ? SizedBox.shrink() : prefixIcon!,

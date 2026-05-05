@@ -2,12 +2,9 @@ import 'package:easy_localization/easy_localization.dart';
 import 'package:flutter/material.dart';
 import 'package:milleservices/providers/settings_provider.dart';
 import 'package:milleservices/providers/userProvider.dart';
+import 'package:milleservices/screens/authentification/forgot_password.dart';
 import 'package:milleservices/screens/authentification/signup.dart';
-import 'package:milleservices/providers/home_content_provider.dart';
-import 'package:milleservices/screens/particulier/home_particulier.dart';
-import 'package:milleservices/screens/prestataire/home_abonnement.dart';
-import 'package:milleservices/screens/prestataire/home_prestataire.dart';
-import 'package:milleservices/screens/settings.dart';
+import 'package:milleservices/services/home_resolver.dart';
 import 'package:milleservices/services/sizeConfig.dart';
 import 'package:milleservices/services/utilities.dart';
 import 'package:milleservices/widgets/customButton.dart';
@@ -46,6 +43,7 @@ class _LoginState extends State<Login> with TickerProviderStateMixin {
 
   @override
   Widget build(BuildContext context) {
+    SizeConfig().init(context);
     final bottomInset = MediaQuery.of(context).viewInsets.bottom;
     return Scaffold(
       // Laisse le contenu remonter quand le clavier s'affiche
@@ -54,11 +52,16 @@ class _LoginState extends State<Login> with TickerProviderStateMixin {
       body: Stack(
         children: [
           Image.asset("${Utilities().imagePath}ouvrier.jpeg"),
-          SizedBox(
-            width: SizeConfig.screenWidth,
-            height: SizeConfig.screenHeight,
-            child: Column(
-              children: [
+          SafeArea(
+            child: AnimatedPadding(
+              duration: const Duration(milliseconds: 200),
+              curve: Curves.easeOut,
+              padding: EdgeInsets.only(bottom: bottomInset),
+              child: SizedBox(
+                width: SizeConfig.screenWidth,
+                height: SizeConfig.screenHeight,
+                child: Column(
+                  children: [
                 Padding(
                   padding: EdgeInsets.only(
                     top: SizeConfig.blockSizeVertical * 15,
@@ -188,16 +191,18 @@ class _LoginState extends State<Login> with TickerProviderStateMixin {
                     ],
                   ),
                 ),
-                Expanded(
-                  child: TabBarView(
-                    controller: tabController,
-                    children: [
-                      _buildForm("particulier", context),
-                      _buildForm("prestataire", context),
-                    ],
-                  ),
+                    Expanded(
+                      child: TabBarView(
+                        controller: tabController,
+                        children: [
+                          _buildForm("particulier", context),
+                          _buildForm("prestataire", context),
+                        ],
+                      ),
+                    ),
+                  ],
                 ),
-              ],
+              ),
             ),
           ),
         ],
@@ -237,27 +242,10 @@ class _LoginState extends State<Login> with TickerProviderStateMixin {
           Navigator.of(context).pushReplacement(
             MaterialPageRoute<void>(
               builder: (_) {
-                if (userProvider.user!.role.toLowerCase() == 'particulier') {
-                  // Particulier : si langue déjà choisie -> HomeParticulier, sinon Settings.
-                  return settings.locale != null
-                      ? ChangeNotifierProvider(
-                          create: (_) => HomeContentProvider(),
-                          child: const HomeParticulier(),
-                        )
-                      : const Settings();
-                }
-                // Prestataire :
-                // - si aucun abonnement -> HomeAbonnement
-                // - sinon, si langue non définie -> Settings
-                // - sinon -> HomePrestataire
-                print("userProvider logge : ${userProvider.user}");
-                if (userProvider.abonnement == null) {
-                  return const HomeAbonnement();
-                }
-                if (settings.locale == null) {
-                  return const Settings();
-                }
-                return const HomePrestataire();
+                return resolveHome(
+                  settings: settings,
+                  userProvider: userProvider,
+                );
               },
             ),
           );
@@ -378,7 +366,14 @@ class _LoginState extends State<Login> with TickerProviderStateMixin {
             Align(
               alignment: Alignment.centerLeft,
               child: GestureDetector(
-                onTap: () {},
+                onTap: () {
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (context) => const ForgotPasswordScreen(),
+                    ),
+                  );
+                },
                 child: Padding(
                   padding: EdgeInsets.only(
                     left: SizeConfig.blockSizeHorizontal * 10,

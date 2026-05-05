@@ -1,5 +1,6 @@
 import 'package:easy_localization/easy_localization.dart';
 import 'package:flutter/material.dart';
+import 'package:geocoding/geocoding.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:milleservices/controllers/authController.dart';
 import 'package:milleservices/controllers/prestationsController.dart';
@@ -7,6 +8,7 @@ import 'package:milleservices/models/prestation.dart';
 import 'package:milleservices/models/prestataire.dart';
 import 'package:milleservices/providers/userProvider.dart';
 import 'package:milleservices/screens/deroulement_prestation.dart';
+import 'package:milleservices/services/device_location_service.dart';
 import 'package:milleservices/services/image_helper.dart';
 import 'package:milleservices/services/sizeConfig.dart';
 import 'package:milleservices/services/utilities.dart';
@@ -17,15 +19,15 @@ import 'package:provider/provider.dart';
 /// puis confirme pour créer la prestation et aller au déroulement.
 class ConfirmPrestation extends StatefulWidget {
   final Prestataire prestataire;
-  final String prestataireServiceId;
-  final String serviceLibelle;
+  final String? prestataireServiceId;
+  final String? serviceLibelle;
   final String? adresseParticulier;
 
   const ConfirmPrestation({
     super.key,
     required this.prestataire,
-    required this.prestataireServiceId,
-    required this.serviceLibelle,
+    this.prestataireServiceId,
+    this.serviceLibelle,
     this.adresseParticulier,
   });
 
@@ -35,22 +37,34 @@ class ConfirmPrestation extends StatefulWidget {
 
 class _ConfirmPrestationState extends State<ConfirmPrestation> {
   final _formKey = GlobalKey<FormState>();
-  final _typeController = TextEditingController();
   final _descriptionController = TextEditingController();
-  final _budgetController = TextEditingController();
   final _adresseController = TextEditingController();
 
   static final _prestationsController = PrestationsController.instance;
   final ImagePicker _imagePicker = ImagePicker();
   bool _isSubmitting = false;
   bool _uploadingDemandeImage = false;
+  bool _locatingAddress = false;
+  PrestataireServiceItem? _selectedService;
   /// URL Cloudinary après upload — facultatif, uniquement pour illustrer la demande du particulier.
   String? _demandeImageUrl;
 
   @override
   void initState() {
     super.initState();
-    _typeController.text = widget.serviceLibelle;
+    final preselectedId = widget.prestataireServiceId?.trim();
+    final hasPreselected = preselectedId != null && preselectedId.isNotEmpty;
+    if (hasPreselected) {
+      for (final s in widget.prestataire.services) {
+        if ((s.prestataireServiceId ?? '').trim() == preselectedId) {
+          _selectedService = s;
+          break;
+        }
+      }
+    } else if (widget.prestataire.services.length == 1) {
+      _selectedService = widget.prestataire.services.first;
+    }
+
     final adresse = widget.adresseParticulier?.toString().trim();
     if (adresse != null && adresse.isNotEmpty) {
       _adresseController.text = adresse;
@@ -59,23 +73,22 @@ class _ConfirmPrestationState extends State<ConfirmPrestation> {
 
   @override
   void dispose() {
-    _typeController.dispose();
     _descriptionController.dispose();
-    _budgetController.dispose();
     _adresseController.dispose();
     super.dispose();
   }
 
-  double? _parseBudget(String value) {
-    if (value.trim().isEmpty) return null;
-    final cleaned = value
-        .replaceAll(RegExp(r'[\s\u00A0]'), '')
-        .replaceAll(',', '.');
-    return double.tryParse(cleaned);
-  }
-
   Future<void> _onConfirm() async {
     if (!_formKey.currentState!.validate()) return;
+    final resolvedServiceId = _resolvedPrestataireServiceId();
+    if (resolvedServiceId == null || resolvedServiceId.isEmpty) {
+      Utilities().showMesage(
+        context,
+        'error',
+        'Veuillez choisir un service.',
+      );
+      return;
+    }
 
     final userProvider = context.read<UserProvider>();
     final token = userProvider.token;
@@ -95,15 +108,12 @@ class _ConfirmPrestationState extends State<ConfirmPrestation> {
     var result = await _prestationsController.createPrestation(
       token: token,
       prestataireId: widget.prestataire.id,
-      prestataireServiceId: widget.prestataireServiceId,
-      typeDeTache: _typeController.text.trim().isEmpty
-          ? null
-          : _typeController.text.trim(),
+      prestataireServiceId: resolvedServiceId,
+      typeDeTache: _typeDeTacheForApi,
       description: _descriptionController.text.trim().isEmpty
           ? null
           : _descriptionController.text.trim(),
       imageUrl: _demandeImageUrl,
-      budget: _parseBudget(_budgetController.text),
       adresse: _adresseController.text.trim().isEmpty
           ? null
           : _adresseController.text.trim(),
@@ -116,15 +126,12 @@ class _ConfirmPrestationState extends State<ConfirmPrestation> {
         result = await _prestationsController.createPrestation(
           token: newToken,
           prestataireId: widget.prestataire.id,
-          prestataireServiceId: widget.prestataireServiceId,
-          typeDeTache: _typeController.text.trim().isEmpty
-              ? null
-              : _typeController.text.trim(),
+          prestataireServiceId: resolvedServiceId,
+          typeDeTache: _typeDeTacheForApi,
           description: _descriptionController.text.trim().isEmpty
               ? null
               : _descriptionController.text.trim(),
           imageUrl: _demandeImageUrl,
-          budget: _parseBudget(_budgetController.text),
           adresse: _adresseController.text.trim().isEmpty
               ? null
               : _adresseController.text.trim(),
@@ -161,12 +168,99 @@ class _ConfirmPrestationState extends State<ConfirmPrestation> {
     );
   }
 
+  String? _resolvedPrestataireServiceId() {
+    final selected = _selectedService?.prestataireServiceId?.trim();
+    if (selected != null && selected.isNotEmpty) return selected;
+    final fromWidget = widget.prestataireServiceId?.trim();
+    if (fromWidget != null && fromWidget.isNotEmpty) return fromWidget;
+    return null;
+  }
+
+  /// Libellé de la tâche envoyé à l’API (aligné sur le service catalogue choisi).
+  String? get _typeDeTacheForApi {
+    final lib = _selectedService?.libelle.trim();
+    return (lib == null || lib.isEmpty) ? null : lib;
+  }
+
+  String _serviceLabel(PrestataireServiceItem s) {
+    final tarif = s.tarifHoraire;
+    if (tarif == null || tarif <= 0) return s.libelle;
+    return '${s.libelle} - ${tarif.toStringAsFixed(0)} FCFA/h';
+  }
+
   String _filenameFromXFile(XFile file) {
     final name = file.name.trim();
     if (name.isNotEmpty) return name;
     final path = file.path.replaceAll('\\', '/');
     final i = path.lastIndexOf('/');
     return i >= 0 && i < path.length - 1 ? path.substring(i + 1) : 'demande.jpg';
+  }
+
+  String _placemarkToAddressLine(Placemark p) {
+    final parts = <String>[];
+    void push(String? s) {
+      final t = s?.trim() ?? '';
+      if (t.isNotEmpty && !parts.contains(t)) parts.add(t);
+    }
+
+    final street = (p.street ?? '').trim();
+    if (street.isEmpty) {
+      push(p.name);
+      push(p.thoroughfare);
+    } else {
+      push(p.street);
+    }
+    push(p.subLocality);
+    push(p.locality);
+    push(p.postalCode);
+    push(p.administrativeArea);
+    push(p.country);
+    return parts.join(', ');
+  }
+
+  Future<void> _useCurrentLocationForAddress() async {
+    if (_locatingAddress) return;
+    setState(() => _locatingAddress = true);
+    try {
+      final latLng = await DeviceLocationService.getCurrentLatLngOrNull();
+      if (!mounted) return;
+      if (latLng == null) {
+        Utilities().showMesage(
+          context,
+          'error',
+          'confirm_address_location_denied'.tr(),
+        );
+        return;
+      }
+      List<Placemark> placemarks;
+      try {
+        placemarks =
+            await placemarkFromCoordinates(latLng.latitude, latLng.longitude);
+      } catch (_) {
+        placemarks = [];
+      }
+      if (!mounted) return;
+      if (placemarks.isEmpty) {
+        Utilities().showMesage(
+          context,
+          'error',
+          'confirm_address_reverse_failed'.tr(),
+        );
+        return;
+      }
+      final line = _placemarkToAddressLine(placemarks.first);
+      if (line.isEmpty) {
+        Utilities().showMesage(
+          context,
+          'error',
+          'confirm_address_reverse_failed'.tr(),
+        );
+        return;
+      }
+      _adresseController.text = line;
+    } finally {
+      if (mounted) setState(() => _locatingAddress = false);
+    }
   }
 
   Future<void> _pickDemandeImage() async {
@@ -226,11 +320,61 @@ class _ConfirmPrestationState extends State<ConfirmPrestation> {
               SizedBox(height: SizeConfig.blockSizeVertical * 2),
               _label('confirm_type_label'.tr()),
               SizedBox(height: SizeConfig.blockSizeVertical * 0.5),
-              TextFormField(
-                controller: _typeController,
-                decoration: _inputDecoration(hint: 'confirm_type_hint'.tr()),
-                textInputAction: TextInputAction.next,
-              ),
+              if (widget.prestataire.services.isEmpty)
+                Padding(
+                  padding: EdgeInsets.only(
+                    bottom: SizeConfig.blockSizeVertical * 2,
+                  ),
+                  child: Text(
+                    "Ce prestataire n'a aucun service proposé. Impossible de commander.",
+                    style: TextStyle(
+                      color: Colors.red.shade700,
+                      fontSize: SizeConfig.fontSize(
+                        SizeConfig.blockSizeHorizontal * 3.2,
+                      ),
+                    ),
+                  ),
+                )
+              else
+                ButtonTheme(
+                  alignedDropdown: true,
+                  child: DropdownButtonFormField<PrestataireServiceItem>(
+                    value: _selectedService,
+                    isExpanded: true,
+                    dropdownColor: Colors.white,
+                    borderRadius: BorderRadius.circular(
+                      SizeConfig.blockSizeHorizontal * 3,
+                    ),
+                    menuMaxHeight: SizeConfig.blockSizeVertical * 35,
+                    decoration: _inputDecoration(
+                      hint: 'confirm_type_hint'.tr(),
+                    ),
+                    items: widget.prestataire.services
+                        .map(
+                          (s) => DropdownMenuItem<PrestataireServiceItem>(
+                            value: s,
+                            child: SizedBox(
+                              width: double.infinity,
+                              child: Text(
+                                _serviceLabel(s),
+                                overflow: TextOverflow.ellipsis,
+                              ),
+                            ),
+                          ),
+                        )
+                        .toList(),
+                    validator: (value) {
+                      if (widget.prestataire.services.isNotEmpty &&
+                          value == null) {
+                        return 'Veuillez choisir un type de tâche';
+                      }
+                      return null;
+                    },
+                    onChanged: (value) {
+                      setState(() => _selectedService = value);
+                    },
+                  ),
+                ),
               SizedBox(height: SizeConfig.blockSizeVertical * 2),
               _label('confirm_description_label'.tr()),
               SizedBox(height: SizeConfig.blockSizeVertical * 0.5),
@@ -353,21 +497,45 @@ class _ConfirmPrestationState extends State<ConfirmPrestation> {
                   ),
                 ),
               SizedBox(height: SizeConfig.blockSizeVertical * 2),
-              _label('confirm_budget_label'.tr()),
-              SizedBox(height: SizeConfig.blockSizeVertical * 0.5),
-              TextFormField(
-                controller: _budgetController,
-                decoration: _inputDecoration(hint: 'confirm_budget_hint'.tr()),
-                keyboardType: TextInputType.number,
-                textInputAction: TextInputAction.next,
-              ),
-              SizedBox(height: SizeConfig.blockSizeVertical * 2),
               _label('confirm_address_label'.tr()),
               SizedBox(height: SizeConfig.blockSizeVertical * 0.5),
               TextFormField(
                 controller: _adresseController,
                 decoration: _inputDecoration(hint: 'confirm_address_hint'.tr()),
                 textInputAction: TextInputAction.done,
+              ),
+              Align(
+                alignment: Alignment.centerRight,
+                child: TextButton.icon(
+                  onPressed:
+                      _locatingAddress ? null : _useCurrentLocationForAddress,
+                  icon: _locatingAddress
+                      ? SizedBox(
+                          width: 18,
+                          height: 18,
+                          child: CircularProgressIndicator(
+                            strokeWidth: 2,
+                            color: Utilities().colorBlueDark,
+                          ),
+                        )
+                      : Icon(
+                          Icons.my_location,
+                          size: 20,
+                          color: Utilities().colorBlueDark,
+                        ),
+                  label: Text(
+                    _locatingAddress
+                        ? 'confirm_address_locating'.tr()
+                        : 'confirm_address_use_current'.tr(),
+                    style: TextStyle(
+                      color: Utilities().colorBlueDark,
+                      fontSize: SizeConfig.fontSize(
+                        SizeConfig.blockSizeHorizontal * 3.2,
+                      ),
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                ),
               ),
               SizedBox(height: SizeConfig.blockSizeVertical * 4),
               Padding(
@@ -401,7 +569,10 @@ class _ConfirmPrestationState extends State<ConfirmPrestation> {
                   borderRadius: SizeConfig.blockSizeHorizontal * 10,
                   width: SizeConfig.blockSizeHorizontal * 80,
                   height: SizeConfig.blockSizeVertical * 6,
-                  onTap: _isSubmitting ? null : _onConfirm,
+                  onTap: (_isSubmitting ||
+                          widget.prestataire.services.isEmpty)
+                      ? null
+                      : _onConfirm,
                 ),
               ),
               SizedBox(height: SizeConfig.blockSizeVertical * 3),
@@ -446,8 +617,11 @@ class _ConfirmPrestationState extends State<ConfirmPrestation> {
       ),
       contentPadding: EdgeInsets.symmetric(
         horizontal: SizeConfig.blockSizeHorizontal * 4,
-        vertical: SizeConfig.blockSizeVertical * 1.5,
+        vertical: SizeConfig.blockSizeVertical * 1.5 < 14
+            ? 14
+            : SizeConfig.blockSizeVertical * 1.5,
       ),
+      constraints: const BoxConstraints(minHeight: 48),
     );
   }
 }

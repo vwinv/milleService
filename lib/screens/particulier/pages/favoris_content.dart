@@ -4,6 +4,7 @@ import 'package:provider/provider.dart';
 import 'package:milleservices/models/prestataire.dart';
 import 'package:milleservices/providers/home_content_provider.dart';
 import 'package:milleservices/providers/prestatairesProvider.dart';
+import 'package:milleservices/screens/particulier/details_prestataire.dart';
 import 'package:milleservices/services/dynamic_translation_service.dart';
 import 'package:milleservices/services/sizeConfig.dart';
 import 'package:milleservices/services/utilities.dart';
@@ -191,92 +192,103 @@ class FavoriCard extends StatelessWidget {
         ? Colors.white.withOpacity(0.9)
         : Utilities().colorGreyDark;
 
-    return Container(
-      margin: EdgeInsets.only(bottom: SizeConfig.blockSizeVertical * 2),
-      padding: EdgeInsets.all(SizeConfig.blockSizeHorizontal * 4),
-      decoration: BoxDecoration(
-        color: color,
-        borderRadius: BorderRadius.circular(SizeConfig.blockSizeHorizontal * 2),
-        border: Border.all(color: Utilities().colorBlueDark, width: 1),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withOpacity(0.1),
-            blurRadius: 4,
-            offset: const Offset(0, 2),
+    return InkWell(
+      borderRadius: BorderRadius.circular(SizeConfig.blockSizeHorizontal * 2),
+      onTap: () {
+        Navigator.push(
+          context,
+          MaterialPageRoute<void>(
+            builder: (_) => DetailsPrestataire(prestataire: prestataire),
           ),
-        ],
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(
-            prestataire.nom,
-            style: TextStyle(
-              fontWeight: FontWeight.bold,
-              fontSize: SizeConfig.fontSize(
-                SizeConfig.blockSizeHorizontal * 4.2,
-              ),
-              color: textColor,
-            ),
-          ),
-          SizedBox(height: SizeConfig.blockSizeVertical * 0.5),
-          Text(
-            "${prestataire.distanceAffichage} / ${prestataire.adresse}",
-            style: TextStyle(
-              fontSize: SizeConfig.fontSize(
-                SizeConfig.blockSizeHorizontal * 3.5,
-              ),
-              color: subtitleColor,
-            ),
-          ),
-
-          if (prestataire.services.isNotEmpty) ...[
-            SizedBox(height: SizeConfig.blockSizeVertical * 0.5),
-            FutureBuilder<String>(
-              future: DynamicTranslationService.instance.translate(
-                context,
-                prestataire.services
-                    .map((s) => s.libelle)
-                    .where((l) => l.isNotEmpty)
-                    .join(' / '),
-                sourceLang: 'fr',
-              ),
-              builder: (context, snapshot) {
-                final text = snapshot.data ??
-                    prestataire.services
-                        .map((s) => s.libelle)
-                        .where((l) => l.isNotEmpty)
-                        .join(' / ');
-                return Text(
-                  text,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: TextStyle(
-                    fontSize: SizeConfig.fontSize(
-                      SizeConfig.blockSizeHorizontal * 2.8,
-                    ),
-                    color: Colors.grey[700],
-                  ),
-                );
-              },
+        );
+      },
+      child: Container(
+        margin: EdgeInsets.only(bottom: SizeConfig.blockSizeVertical * 2),
+        padding: EdgeInsets.all(SizeConfig.blockSizeHorizontal * 4),
+        decoration: BoxDecoration(
+          color: color,
+          borderRadius: BorderRadius.circular(SizeConfig.blockSizeHorizontal * 2),
+          border: Border.all(color: Utilities().colorBlueDark, width: 1),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withOpacity(0.1),
+              blurRadius: 4,
+              offset: const Offset(0, 2),
             ),
           ],
-          SizedBox(height: SizeConfig.blockSizeVertical * 1),
-          Align(
-            alignment: Alignment.bottomRight,
-            child: Row(
-              mainAxisSize: MainAxisSize.min,
-              children: List.generate(5, (i) {
-                final filled = i < prestataire.noteMoyenne.round();
-                return Icon(
-                  filled ? Icons.star : Icons.star_border,
-                  size: SizeConfig.blockSizeHorizontal * 4,
-                  color: Utilities().colorYellow,
-                );
-              }),
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              prestataire.nom,
+              style: TextStyle(
+                fontWeight: FontWeight.bold,
+                fontSize: SizeConfig.fontSize(
+                  SizeConfig.blockSizeHorizontal * 4.2,
+                ),
+                color: textColor,
+              ),
             ),
-          ),
-        ],
+            SizedBox(height: SizeConfig.blockSizeVertical * 0.5),
+            Text(
+              "${prestataire.distanceAffichage} / ${prestataire.adresse}",
+              style: TextStyle(
+                fontSize: SizeConfig.fontSize(
+                  SizeConfig.blockSizeHorizontal * 3.5,
+                ),
+                color: subtitleColor,
+              ),
+            ),
+
+            if (prestataire.services.isNotEmpty) ...[
+              SizedBox(height: SizeConfig.blockSizeVertical * 0.5),
+              FutureBuilder<String>(
+                future: DynamicTranslationService.instance.translate(
+                  context,
+                  prestataire.services
+                      .map((s) => s.libelle)
+                      .where((l) => l.isNotEmpty)
+                      .join(' / '),
+                  sourceLang: 'fr',
+                ),
+                builder: (context, snapshot) {
+                  final text = snapshot.data ??
+                      prestataire.services
+                          .map((s) => s.libelle)
+                          .where((l) => l.isNotEmpty)
+                          .join(' / ');
+                  return Text(
+                    text,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(
+                      fontSize: SizeConfig.fontSize(
+                        SizeConfig.blockSizeHorizontal * 2.8,
+                      ),
+                      color: Colors.grey[700],
+                    ),
+                  );
+                },
+              ),
+            ],
+            SizedBox(height: SizeConfig.blockSizeVertical * 1),
+            Align(
+              alignment: Alignment.bottomRight,
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: List.generate(5, (i) {
+                  final filled = i < prestataire.noteMoyenne.round();
+                  return Icon(
+                    filled ? Icons.star : Icons.star_border,
+                    size: SizeConfig.blockSizeHorizontal * 4,
+                    color: Utilities().colorYellow,
+                  );
+                }),
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }

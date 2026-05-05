@@ -8,7 +8,7 @@ class CustomButton extends StatelessWidget {
   double borderRadius;
   double width;
   double height;
-  Function()? onTap;
+  VoidCallback? onTap;
 
   CustomButton({
     super.key,
@@ -18,7 +18,7 @@ class CustomButton extends StatelessWidget {
     required this.borderRadius,
     required this.width,
     required this.height,
-    required this.onTap,
+    this.onTap,
   });
 
   @override

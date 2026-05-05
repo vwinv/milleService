@@ -221,6 +221,7 @@ class _WalletState extends State<Wallet> {
 
   @override
   Widget build(BuildContext context) {
+    SizeConfig().init(context);
     return Scaffold(
       backgroundColor: Colors.white,
       appBar: AppBar(
@@ -242,207 +243,212 @@ class _WalletState extends State<Wallet> {
           ),
         ],
       ),
-      body: Column(
-        children: [
-          Padding(
-            padding: EdgeInsets.symmetric(
-              horizontal: SizeConfig.blockSizeHorizontal * 5,
-              vertical: SizeConfig.blockSizeVertical * 2,
-            ),
-            child: Container(
-              height: SizeConfig.blockSizeVertical * 20,
-              decoration: BoxDecoration(
-                gradient: LinearGradient(
-                  begin: Alignment.topCenter,
-                  end: Alignment.bottomCenter,
-                  colors: [Utilities().colorBlueDark, Utilities().colorBlue],
-                ),
-                borderRadius: BorderRadius.circular(
-                  SizeConfig.blockSizeHorizontal * 5,
-                ),
-              ),
-              child: Center(
-                child: _loadingBalance
-                    ? const CircularProgressIndicator(color: Colors.white)
-                    : Column(
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        children: [
-                          Text(
-                            'Solde disponible',
-                            style: TextStyle(
-                              color: Colors.white.withValues(alpha: 0.9),
-                              fontSize: SizeConfig.fontSize(
-                                SizeConfig.blockSizeHorizontal * 3.5,
-                              ),
-                            ),
-                          ),
-                          SizedBox(height: SizeConfig.blockSizeVertical * 1),
-                          Row(
-                            mainAxisAlignment: MainAxisAlignment.center,
-                            spacing: SizeConfig.blockSizeHorizontal * 2,
-                            children: [
-                              Text(
-                                _balanceLoadFailed
-                                    ? '—'
-                                    : (_obscureBalance
-                                          ? '**************'
-                                          : _formattedBalance),
-                                style: TextStyle(
-                                  color: Colors.white,
-                                  fontSize: SizeConfig.fontSize(
-                                    SizeConfig.blockSizeHorizontal * 7,
-                                  ),
-                                  fontWeight: FontWeight.bold,
-                                ),
-                              ),
-                              if (!_balanceLoadFailed)
-                                IconButton(
-                                  onPressed: () {
-                                    setState(() {
-                                      _obscureBalance = !_obscureBalance;
-                                    });
-                                  },
-                                  icon: Icon(
-                                    _obscureBalance
-                                        ? Icons.visibility_off
-                                        : Icons.visibility,
-                                    color: Colors.white,
-                                    size: SizeConfig.blockSizeHorizontal * 6,
-                                  ),
-                                ),
-                            ],
-                          ),
-                          if (_balanceLoadFailed)
-                            Padding(
-                              padding: EdgeInsets.only(
-                                top: SizeConfig.blockSizeVertical * 1,
-                              ),
-                              child: TextButton(
-                                onPressed: _loadWallet,
-                                child: const Text(
-                                  'Réessayer',
-                                  style: TextStyle(color: Colors.white),
-                                ),
-                              ),
-                            ),
-                        ],
-                      ),
-              ),
-            ),
-          ),
-          Padding(
-            padding: EdgeInsets.symmetric(
-              horizontal: SizeConfig.blockSizeHorizontal * 5,
-              vertical: SizeConfig.blockSizeVertical * 2,
-            ),
-            child: Wrap(
-              spacing: SizeConfig.blockSizeHorizontal * 2,
-              runSpacing: SizeConfig.blockSizeVertical * 2,
-              children: paiementBlocs
-                  .map(
-                    (paiementBloc) => InkWell(
-                      onTap: _isRequestingWithdrawal || _loadingBalance
-                          ? null
-                          : () => _onRequestWithdrawal(
-                              context: context,
-                              method: _withdrawalMethodFromName(
-                                paiementBloc['name'].toString(),
-                              ),
-                            ),
-                      borderRadius: BorderRadius.circular(
-                        SizeConfig.blockSizeHorizontal * 5,
-                      ),
-                      child: Container(
-                        width: SizeConfig.blockSizeHorizontal * 28,
-                        height: SizeConfig.blockSizeVertical * 22,
-                        padding: EdgeInsets.symmetric(
-                          horizontal: SizeConfig.blockSizeHorizontal * 2,
-                          vertical: SizeConfig.blockSizeVertical * 2,
-                        ),
-                        decoration: BoxDecoration(
-                          color: paiementBloc['color'],
-                          borderRadius: BorderRadius.circular(
-                            SizeConfig.blockSizeHorizontal * 5,
-                          ),
-                          border: Border.all(
-                            color: paiementBloc['borderColor'],
-                          ),
-                        ),
-                        child: Column(
-                          mainAxisAlignment: MainAxisAlignment.center,
-                          children: [
-                            Image.asset(
-                              'assets/images/${paiementBloc['logo']}',
-                              width: SizeConfig.blockSizeHorizontal * 15,
-                              height: SizeConfig.blockSizeVertical * 7,
-                              fit: BoxFit.cover,
-                            ),
-                            Text(
-                              "Demande un retrait avec ${paiementBloc['name']}",
-                              style: TextStyle(
-                                color: paiementBloc['textColor'],
-                                fontSize: SizeConfig.fontSize(
-                                  SizeConfig.blockSizeHorizontal * 3.5,
-                                ),
-                                fontWeight: FontWeight.bold,
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                    ),
-                  )
-                  .toList(),
-            ),
-          ),
-          Padding(
-            padding: EdgeInsets.symmetric(
-              horizontal: SizeConfig.blockSizeHorizontal * 5,
-              vertical: SizeConfig.blockSizeVertical * 2,
-            ),
-            child: InkWell(
-              onTap: _isRequestingWithdrawal || _loadingBalance
-                  ? null
-                  : () => _onRequestWithdrawal(context: context, method: 'RIB'),
-              borderRadius: BorderRadius.circular(
-                SizeConfig.blockSizeHorizontal * 5,
-              ),
-              child: Container(
-                height: SizeConfig.blockSizeVertical * 7,
+      body: SafeArea(
+        child: SingleChildScrollView(
+          child: Column(
+            children: [
+              Padding(
                 padding: EdgeInsets.symmetric(
                   horizontal: SizeConfig.blockSizeHorizontal * 5,
                   vertical: SizeConfig.blockSizeVertical * 2,
                 ),
-                decoration: BoxDecoration(
-                  color: Utilities().colorBlueDark,
+                child: Container(
+                  height: SizeConfig.blockSizeVertical * 20,
+                  decoration: BoxDecoration(
+                    gradient: LinearGradient(
+                      begin: Alignment.topCenter,
+                      end: Alignment.bottomCenter,
+                      colors: [Utilities().colorBlueDark, Utilities().colorBlue],
+                    ),
+                    borderRadius: BorderRadius.circular(
+                      SizeConfig.blockSizeHorizontal * 5,
+                    ),
+                  ),
+                  child: Center(
+                    child: _loadingBalance
+                        ? const CircularProgressIndicator(color: Colors.white)
+                        : Column(
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            children: [
+                              Text(
+                                'Solde disponible',
+                                style: TextStyle(
+                                  color: Colors.white.withValues(alpha: 0.9),
+                                  fontSize: SizeConfig.fontSize(
+                                    SizeConfig.blockSizeHorizontal * 3.5,
+                                  ),
+                                ),
+                              ),
+                              SizedBox(height: SizeConfig.blockSizeVertical * 1),
+                              Row(
+                                mainAxisAlignment: MainAxisAlignment.center,
+                                spacing: SizeConfig.blockSizeHorizontal * 2,
+                                children: [
+                                  Text(
+                                    _balanceLoadFailed
+                                        ? '—'
+                                        : (_obscureBalance
+                                              ? '**************'
+                                              : _formattedBalance),
+                                    style: TextStyle(
+                                      color: Colors.white,
+                                      fontSize: SizeConfig.fontSize(
+                                        SizeConfig.blockSizeHorizontal * 7,
+                                      ),
+                                      fontWeight: FontWeight.bold,
+                                    ),
+                                  ),
+                                  if (!_balanceLoadFailed)
+                                    IconButton(
+                                      onPressed: () {
+                                        setState(() {
+                                          _obscureBalance = !_obscureBalance;
+                                        });
+                                      },
+                                      icon: Icon(
+                                        _obscureBalance
+                                            ? Icons.visibility_off
+                                            : Icons.visibility,
+                                        color: Colors.white,
+                                        size:
+                                            SizeConfig.blockSizeHorizontal * 6,
+                                      ),
+                                    ),
+                                ],
+                              ),
+                              if (_balanceLoadFailed)
+                                Padding(
+                                  padding: EdgeInsets.only(
+                                    top: SizeConfig.blockSizeVertical * 1,
+                                  ),
+                                  child: TextButton(
+                                    onPressed: _loadWallet,
+                                    child: const Text(
+                                      'Réessayer',
+                                      style: TextStyle(color: Colors.white),
+                                    ),
+                                  ),
+                                ),
+                            ],
+                          ),
+                  ),
+                ),
+              ),
+              Padding(
+                padding: EdgeInsets.symmetric(
+                  horizontal: SizeConfig.blockSizeHorizontal * 5,
+                  vertical: SizeConfig.blockSizeVertical * 2,
+                ),
+                child: Wrap(
+                  spacing: SizeConfig.blockSizeHorizontal * 2,
+                  runSpacing: SizeConfig.blockSizeVertical * 2,
+                  children: paiementBlocs
+                      .map(
+                        (paiementBloc) => InkWell(
+                          onTap: _isRequestingWithdrawal || _loadingBalance
+                              ? null
+                              : () => _onRequestWithdrawal(
+                                  context: context,
+                                  method: _withdrawalMethodFromName(
+                                    paiementBloc['name'].toString(),
+                                  ),
+                                ),
+                          borderRadius: BorderRadius.circular(
+                            SizeConfig.blockSizeHorizontal * 5,
+                          ),
+                          child: Container(
+                            width: SizeConfig.blockSizeHorizontal * 28,
+                            height: SizeConfig.blockSizeVertical * 22,
+                            padding: EdgeInsets.symmetric(
+                              horizontal: SizeConfig.blockSizeHorizontal * 2,
+                              vertical: SizeConfig.blockSizeVertical * 2,
+                            ),
+                            decoration: BoxDecoration(
+                              color: paiementBloc['color'],
+                              borderRadius: BorderRadius.circular(
+                                SizeConfig.blockSizeHorizontal * 5,
+                              ),
+                              border: Border.all(
+                                color: paiementBloc['borderColor'],
+                              ),
+                            ),
+                            child: Column(
+                              mainAxisAlignment: MainAxisAlignment.center,
+                              children: [
+                                Image.asset(
+                                  'assets/images/${paiementBloc['logo']}',
+                                  width: SizeConfig.blockSizeHorizontal * 15,
+                                  height: SizeConfig.blockSizeVertical * 7,
+                                  fit: BoxFit.cover,
+                                ),
+                                Text(
+                                  "Demande un retrait avec ${paiementBloc['name']}",
+                                  style: TextStyle(
+                                    color: paiementBloc['textColor'],
+                                    fontSize: SizeConfig.fontSize(
+                                      SizeConfig.blockSizeHorizontal * 3.5,
+                                    ),
+                                    fontWeight: FontWeight.bold,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ),
+                      )
+                      .toList(),
+                ),
+              ),
+              Padding(
+                padding: EdgeInsets.symmetric(
+                  horizontal: SizeConfig.blockSizeHorizontal * 5,
+                  vertical: SizeConfig.blockSizeVertical * 2,
+                ),
+                child: InkWell(
+                  onTap: _isRequestingWithdrawal || _loadingBalance
+                      ? null
+                      : () => _onRequestWithdrawal(context: context, method: 'RIB'),
                   borderRadius: BorderRadius.circular(
                     SizeConfig.blockSizeHorizontal * 5,
                   ),
-                ),
-                child: Row(
-                  spacing: SizeConfig.blockSizeHorizontal * 2,
-                  children: [
-                    Icon(
-                      Icons.credit_card,
-                      color: Colors.white,
-                      size: SizeConfig.blockSizeHorizontal * 6,
+                  child: Container(
+                    height: SizeConfig.blockSizeVertical * 7,
+                    padding: EdgeInsets.symmetric(
+                      horizontal: SizeConfig.blockSizeHorizontal * 5,
+                      vertical: SizeConfig.blockSizeVertical * 2,
                     ),
-                    Text(
-                      "Demande un retrait avec un RIB",
-                      style: TextStyle(
-                        color: Colors.white,
-                        fontSize: SizeConfig.fontSize(
-                          SizeConfig.blockSizeHorizontal * 3.5,
-                        ),
-                        fontWeight: FontWeight.bold,
+                    decoration: BoxDecoration(
+                      color: Utilities().colorBlueDark,
+                      borderRadius: BorderRadius.circular(
+                        SizeConfig.blockSizeHorizontal * 5,
                       ),
                     ),
-                  ],
+                    child: Row(
+                      spacing: SizeConfig.blockSizeHorizontal * 2,
+                      children: [
+                        Icon(
+                          Icons.credit_card,
+                          color: Colors.white,
+                          size: SizeConfig.blockSizeHorizontal * 6,
+                        ),
+                        Text(
+                          "Demande un retrait avec un RIB",
+                          style: TextStyle(
+                            color: Colors.white,
+                            fontSize: SizeConfig.fontSize(
+                              SizeConfig.blockSizeHorizontal * 3.5,
+                            ),
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
                 ),
               ),
-            ),
+            ],
           ),
-        ],
+        ),
       ),
     );
   }
@@ -511,6 +517,11 @@ class _RetraitMontantDialogState extends State<_RetraitMontantDialog> {
                 labelText: 'Montant à retirer',
                 suffixText: 'FCFA',
                 border: OutlineInputBorder(),
+                contentPadding: EdgeInsets.symmetric(
+                  horizontal: 12,
+                  vertical: 14,
+                ),
+                constraints: BoxConstraints(minHeight: 48),
               ),
               validator: (value) {
                 final n = widget.parseMontant(value ?? '');

@@ -1,12 +1,18 @@
+import 'dart:async';
+
 import 'package:easy_localization/easy_localization.dart';
 import 'package:flutter/material.dart';
+import 'package:milleservices/controllers/authController.dart';
+import 'package:milleservices/models/response.dart';
+import 'package:milleservices/screens/welcome.dart';
 import 'package:provider/provider.dart';
 import 'package:milleservices/models/offre.dart';
 import 'package:milleservices/providers/settings_provider.dart';
 import 'package:milleservices/providers/userProvider.dart';
-import 'package:milleservices/services/prestataire_home_resolver.dart';
+import 'package:milleservices/services/home_resolver.dart';
 import 'package:milleservices/services/utilities.dart';
 import 'package:milleservices/services/sizeConfig.dart';
+import 'package:milleservices/widgets/paiement_soft_pay_sheet.dart';
 
 class HomeAbonnement extends StatefulWidget {
   const HomeAbonnement({super.key});
@@ -86,40 +92,174 @@ class _HomeAbonnementState extends State<HomeAbonnement> {
     return n.toString();
   }
 
+  Future<void> _waitForNextFrame() {
+    final completer = Completer<void>();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!completer.isCompleted) completer.complete();
+    });
+    return completer.future;
+  }
+
   Future<void> _commencer() async {
     final selected = _selectedOffre;
     if (selected == null) return;
     final userProvider = context.read<UserProvider>();
+    final token = userProvider.token;
+    if (token == null || token.isEmpty) {
+      Utilities().showMesage(context, 'error', 'Session expirée.');
+      return;
+    }
+    await _waitForNextFrame();
+    if (!mounted) return;
     setState(() => _localLoading = true);
-    final res = await userProvider.souscrireAbonnement(selected.id);
+    final res = await userProvider.initPaydunyaAbonnement(selected.id.toString());
     if (!mounted) return;
     setState(() => _localLoading = false);
-    if (res.success == true) {
-      await userProvider.refreshVerificationStatus();
-      final settings = context.read<SettingsProvider>();
-      final statutVerif =
-          userProvider.user?.statutVerification?.toString().toUpperCase() ?? '';
-      Utilities().showMesage(
-        context,
-        'success',
-        'abonnement_success'.tr(namedArgs: {'libelle': selected.libelle ?? ''}),
-      );
-      Navigator.of(context).pushReplacement(
-        MaterialPageRoute<void>(
-          builder: (_) => resolvePrestataireHome(
-            statutVerificationRaw: statutVerif,
-            settings: settings,
-            userProvider: userProvider,
-          ),
-        ),
-      );
-    } else {
+    if (res.success != true || res.data is! Map) {
       Utilities().showMesage(
         context,
         'error',
-        res.message ?? 'abonnement_failed'.tr(),
+        res.message?.toString().isNotEmpty == true
+            ? res.message.toString()
+            : 'abonnement_failed'.tr(),
       );
+      return;
     }
+    final map = Map<String, dynamic>.from(res.data as Map);
+    final invoiceToken = map['invoiceToken']?.toString().trim();
+    final checkoutUrlFallback = map['checkoutUrl']?.toString().trim() ?? '';
+    if (invoiceToken == null || invoiceToken.isEmpty) {
+      Utilities().showMesage(context, 'error', 'abonnement_failed'.tr());
+      return;
+    }
+    final user = userProvider.user;
+    final settings = context.read<SettingsProvider>();
+    final auth = Authcontroller.instance;
+    final paid = await showModalBottomSheet<bool>(
+      context: context,
+      isScrollControlled: true,
+      useSafeArea: false,
+      backgroundColor: Colors.transparent,
+      clipBehavior: Clip.antiAlias,
+      shape: RoundedRectangleBorder(
+        borderRadius: PaiementSoftPaySheet.topBorderRadius,
+      ),
+      builder: (ctx) => PaiementSoftPaySheet(
+        invoiceToken: invoiceToken,
+        checkoutUrlFallback: checkoutUrlFallback,
+        initialPrenom: user?.prenom?.toString() ?? '',
+        initialNom: user?.nom?.toString() ?? '',
+        initialTelephone: user?.telephone?.toString() ?? '',
+        email: user?.email?.toString(),
+        montantLabel: '${_formatPrix(selected.prix)} FCFA',
+        verifyBeforeComplete: () async {
+          const maxAttempts = 48;
+          const pause = Duration(milliseconds: 500);
+          final offreIdAttendu = selected.id.toString();
+          for (var i = 0; i < maxAttempts; i++) {
+            if (i > 0) await Future<void>.delayed(pause);
+            if (!mounted) return false;
+            var t = userProvider.token;
+            var paidRes = await auth.isAbonnementPaydunyaInvoicePaid(
+              token: t,
+              invoiceToken: invoiceToken,
+            );
+            if (paidRes.status == 401) {
+              await userProvider.refreshToken();
+              if (!mounted) return false;
+              t = userProvider.token;
+              if (t == null || t.isEmpty) return false;
+              paidRes = await auth.isAbonnementPaydunyaInvoicePaid(
+                token: t,
+                invoiceToken: invoiceToken,
+              );
+            }
+            if (paidRes.success != true || paidRes.data is! Map) continue;
+            final dm = Map<String, dynamic>.from(paidRes.data as Map);
+            if (dm['paid'] != true) continue;
+            final aboRaw = dm['abonnement'];
+            if (aboRaw != null) {
+              await userProvider.applyAbonnementCourantPayload(aboRaw);
+            } else {
+              await userProvider.refreshAbonnementCourant();
+            }
+            if (!mounted) return false;
+            final a = userProvider.abonnement;
+            if (a != null && a.offreId?.toString() == offreIdAttendu) {
+              return true;
+            }
+          }
+          return false;
+        },
+        onSoftPay: ({
+          required String method,
+          required String prenom,
+          required String nom,
+          required String telephone,
+          String? email,
+        }) async {
+          switch (method) {
+            case 'wave_sn':
+              return auth.payAbonnementWaveSn(
+                token: token,
+                offreId: selected.id.toString(),
+                invoiceToken: invoiceToken,
+                prenom: prenom,
+                nom: nom,
+                telephone: telephone,
+                email: email,
+              );
+            case 'orange_money_sn':
+              return auth.payAbonnementOrangeMoneySn(
+                token: token,
+                offreId: selected.id.toString(),
+                invoiceToken: invoiceToken,
+                prenom: prenom,
+                nom: nom,
+                telephone: telephone,
+                email: email,
+              );
+            case 'free_money_sn':
+              return auth.payAbonnementFreeMoneySn(
+                token: token,
+                offreId: selected.id.toString(),
+                invoiceToken: invoiceToken,
+                prenom: prenom,
+                nom: nom,
+                telephone: telephone,
+                email: email,
+              );
+            default:
+              return ResponseData(
+                success: false,
+                message: 'Moyen inconnu',
+                data: null,
+                status: 400,
+                emailNotVerified: false,
+              );
+          }
+        },
+      ),
+    );
+    if (!mounted || paid != true) return;
+    await userProvider.refreshAbonnementCourant();
+    if (!mounted) return;
+    final aboApres = userProvider.abonnement;
+    if (aboApres == null) return;
+    if (aboApres.offreId?.toString() != selected.id.toString()) return;
+    Utilities().showMesage(
+      context,
+      'success',
+      'abonnement_success'.tr(
+        namedArgs: {'libelle': selected.libelle ?? ''},
+      ),
+    );
+    Navigator.of(context).pushReplacement(
+      MaterialPageRoute<void>(
+        builder: (_) =>
+            resolveHome(settings: settings, userProvider: userProvider),
+      ),
+    );
   }
 
   @override
@@ -130,6 +270,28 @@ class _HomeAbonnementState extends State<HomeAbonnement> {
     _ensureFirstSelected(offres);
 
     return Scaffold(
+      appBar: AppBar(
+        backgroundColor: Colors.white,
+        elevation: 0,
+        surfaceTintColor: Colors.transparent,
+        leadingWidth: 0,
+        leading: const SizedBox.shrink(),
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.logout, color: Colors.red),
+            tooltip: 'Déconnexion',
+            onPressed: () async {
+              await context.read<UserProvider>().logout();
+              if (!context.mounted) return;
+              Navigator.pushAndRemoveUntil(
+                context,
+                MaterialPageRoute(builder: (context) => const Welcome()),
+                (route) => false,
+              );
+            },
+          ),
+        ],
+      ),
       backgroundColor: Colors.white,
 
       body: _localLoading && offres.isEmpty
@@ -176,7 +338,7 @@ class _HomeAbonnementState extends State<HomeAbonnement> {
                   children: [
                     Padding(
                       padding: EdgeInsets.only(
-                        top: SizeConfig.blockSizeVertical * 15,
+                        top: SizeConfig.blockSizeVertical * 10,
                         right: SizeConfig.blockSizeHorizontal * 10,
                       ),
                       child: Text(

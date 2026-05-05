@@ -36,6 +36,8 @@
 	<string>Votre position servira à afficher la carte, les trajets et à mettre à jour votre localisation pour les prestations.</string>
 	<key>NSLocationAlwaysAndWhenInUseUsageDescription</key>
 	<string>En arrière-plan, la position permet aux clients de vous voir sur la carte pendant une prestation.</string>
+	<key>GMSApiKey</key>
+	<string>$(GOOGLE_MAPS_API_KEY)</string>
 	<key>UIApplicationSupportsIndirectInputEvents</key>
 	<true/>
 	<key>BGTaskSchedulerPermittedIdentifiers</key>

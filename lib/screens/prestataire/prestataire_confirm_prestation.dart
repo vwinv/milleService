@@ -9,7 +9,7 @@ import 'package:milleservices/widgets/customButton.dart';
 import 'package:provider/provider.dart';
 
 /// Récap d'une prestation en attente : le prestataire voit les infos client,
-/// type, adresse, budget, description, image(s), et peut Accepter ou Refuser.
+/// type, adresse, description, image(s), et peut Accepter ou Refuser.
 /// Accepter → DeroulementPrestation. Refuser → retour à la liste (mise à jour).
 class PrestataireConfirmPrestation extends StatefulWidget {
   final Prestation prestation;
@@ -127,9 +127,6 @@ class _PrestataireConfirmPrestationState
     final typeTache = p.typeDeTache ?? p.service?.libelle ?? '—';
     final adresse =
         p.adresse ?? (p.ville != null && p.ville!.isNotEmpty ? p.ville! : '—');
-    final budget = p.budget != null
-        ? '${p.budget!.toStringAsFixed(0)} FCFA'
-        : '— FCFA';
     final description = p.description ?? 'Aucune description.';
     final imageUrl = p.imageUrl;
 
@@ -300,34 +297,6 @@ class _PrestataireConfirmPrestationState
                               ),
                               Text(
                                 adresse,
-                                style: TextStyle(
-                                  fontWeight: FontWeight.normal,
-                                  fontSize: SizeConfig.fontSize(
-                                    SizeConfig.blockSizeHorizontal * 3.2,
-                                  ),
-                                  color: Colors.black87,
-                                ),
-                              ),
-                            ],
-                          ),
-                        ),
-                        SizedBox(
-                          width: SizeConfig.blockSizeHorizontal * 25,
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.end,
-                            children: [
-                              Text(
-                                'Budget',
-                                style: TextStyle(
-                                  fontWeight: FontWeight.bold,
-                                  fontSize: SizeConfig.fontSize(
-                                    SizeConfig.blockSizeHorizontal * 3.2,
-                                  ),
-                                  color: Colors.black87,
-                                ),
-                              ),
-                              Text(
-                                budget,
                                 style: TextStyle(
                                   fontWeight: FontWeight.normal,
                                   fontSize: SizeConfig.fontSize(

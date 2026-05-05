@@ -1,5 +1,6 @@
 import Flutter
 import FirebaseCore
+import GoogleMaps
 import UIKit
 import flutter_foreground_task
 
@@ -10,6 +11,10 @@ import flutter_foreground_task
     didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]?
   ) -> Bool {
     FirebaseApp.configure()
+    let mapsApiKey = (Bundle.main.object(forInfoDictionaryKey: "GMSApiKey") as? String) ?? ""
+    if !mapsApiKey.isEmpty {
+      GMSServices.provideAPIKey(mapsApiKey)
+    }
     GeneratedPluginRegistrant.register(with: self)
     SwiftFlutterForegroundTaskPlugin.setPluginRegistrantCallback { registry in
       GeneratedPluginRegistrant.register(with: registry)

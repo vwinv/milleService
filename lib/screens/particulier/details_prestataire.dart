@@ -1,7 +1,6 @@
 import 'package:easy_localization/easy_localization.dart';
 import 'package:flutter/material.dart';
-import 'package:flutter_map/flutter_map.dart';
-import 'package:latlong2/latlong.dart';
+import 'package:google_maps_flutter/google_maps_flutter.dart';
 import 'package:milleservices/models/prestataire.dart';
 import 'package:milleservices/models/prestataire_photo.dart';
 import 'package:milleservices/providers/prestatairesProvider.dart';
@@ -9,6 +8,7 @@ import 'package:milleservices/providers/userProvider.dart';
 import 'package:milleservices/screens/particulier/confirm_prestation.dart';
 import 'package:milleservices/screens/particulier/profil_particulier.dart';
 import 'package:milleservices/services/app_map.dart';
+import 'package:milleservices/services/map_marker_badge.dart';
 import 'package:milleservices/services/sizeConfig.dart';
 import 'package:milleservices/services/utilities.dart';
 import 'package:milleservices/widgets/customButton.dart';
@@ -28,6 +28,7 @@ class _DetailsPrestataireState extends State<DetailsPrestataire> {
   bool _hasNewNotifications = true;
   List<PrestatairePhoto> _cataloguePhotos = [];
   bool _catalogueLoading = true;
+  BitmapDescriptor? _prestataireMarkerIcon;
 
   static const List<Color> _avisCircleColors = [
     Color(0xFFB4DBFF),
@@ -38,12 +39,24 @@ class _DetailsPrestataireState extends State<DetailsPrestataire> {
   @override
   void initState() {
     super.initState();
+    _loadPrestataireMarkerIcon();
     WidgetsBinding.instance.addPostFrameCallback((_) {
       context.read<PrestatairesProvider>().loadAvisPrestataire(
         widget.prestataire.id,
       );
       _loadCatalogue();
     });
+  }
+
+  Future<void> _loadPrestataireMarkerIcon() async {
+    final icon = await MapMarkerBadge.create(
+      label: widget.prestataire.nom,
+      borderColor: Colors.green,
+      fillColor: Colors.green.withOpacity(0.15),
+      textColor: Colors.green.shade800,
+    );
+    if (!mounted) return;
+    setState(() => _prestataireMarkerIcon = icon);
   }
 
   Future<void> _loadCatalogue() async {
@@ -56,6 +69,55 @@ class _DetailsPrestataireState extends State<DetailsPrestataire> {
       _cataloguePhotos = list;
       _catalogueLoading = false;
     });
+  }
+
+  void _openPrestataireMainPhotoViewer() {
+    final imageUrl = widget.prestataire.avatarUrl?.trim();
+    if (imageUrl == null || imageUrl.isEmpty) return;
+    showDialog<void>(
+      context: context,
+      barrierColor: Colors.black.withOpacity(0.9),
+      builder: (ctx) {
+        return GestureDetector(
+          onTap: () => Navigator.of(ctx).pop(),
+          child: Scaffold(
+            backgroundColor: Colors.transparent,
+            body: SafeArea(
+              child: Stack(
+                children: [
+                  Positioned.fill(
+                    child: InteractiveViewer(
+                      minScale: 1,
+                      maxScale: 4,
+                      child: Center(
+                        child: Image.network(
+                          imageUrl,
+                          fit: BoxFit.contain,
+                          errorBuilder: (_, __, ___) => Icon(
+                            Icons.broken_image,
+                            color: Colors.white70,
+                            size: SizeConfig.blockSizeHorizontal * 12,
+                          ),
+                        ),
+                      ),
+                    ),
+                  ),
+                  Positioned(
+                    top: SizeConfig.blockSizeVertical * 1.5,
+                    right: SizeConfig.blockSizeHorizontal * 4,
+                    child: IconButton(
+                      onPressed: () => Navigator.of(ctx).pop(),
+                      icon: const Icon(Icons.close),
+                      color: Colors.white,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        );
+      },
+    );
   }
 
   @override
@@ -182,63 +244,23 @@ class _DetailsPrestataireState extends State<DetailsPrestataire> {
                               widget.prestataire.longitude!,
                             ),
                             zoom: 15,
-                            markers: [
+                            markers: {
                               Marker(
-                                point: LatLng(
+                                markerId: MarkerId('prest_${widget.prestataire.id}'),
+                                position: LatLng(
                                   widget.prestataire.latitude!,
                                   widget.prestataire.longitude!,
                                 ),
-                                width: SizeConfig.blockSizeHorizontal * 40,
-                                height: SizeConfig.blockSizeVertical * 10,
-                                child: Column(
-                                  mainAxisSize: MainAxisSize.min,
-                                  children: [
-                                    Container(
-                                      padding: EdgeInsets.symmetric(
-                                        horizontal:
-                                            SizeConfig.blockSizeHorizontal * 3,
-                                        vertical:
-                                            SizeConfig.blockSizeVertical * 0.5,
-                                      ),
-                                      decoration: BoxDecoration(
-                                        color: Colors.green.withOpacity(0.15),
-                                        borderRadius: BorderRadius.circular(
-                                          100,
-                                        ),
-                                        border: Border.all(
-                                          color: Colors.green,
-                                          width: 2,
-                                        ),
-                                      ),
-                                      child: Text(
-                                        widget.prestataire.nom,
-                                        maxLines: 1,
-                                        overflow: TextOverflow.ellipsis,
-                                        style: TextStyle(
-                                          color: Colors.green[800],
-                                          fontSize: SizeConfig.fontSize(
-                                            SizeConfig.blockSizeHorizontal *
-                                                3.2,
-                                          ),
-                                          fontWeight: FontWeight.w600,
-                                        ),
-                                      ),
+                                icon:
+                                    _prestataireMarkerIcon ??
+                                    BitmapDescriptor.defaultMarkerWithHue(
+                                      BitmapDescriptor.hueGreen,
                                     ),
-                                    SizedBox(
-                                      height:
-                                          SizeConfig.blockSizeVertical * 0.5,
-                                    ),
-                                    Icon(
-                                      Icons.location_on,
-                                      color: Colors.green,
-                                      size: SizeConfig.fontSize(
-                                        SizeConfig.blockSizeHorizontal * 7,
-                                      ),
-                                    ),
-                                  ],
+                                infoWindow: InfoWindow(
+                                  title: widget.prestataire.nom,
                                 ),
                               ),
-                            ],
+                            },
                           )
                         : Center(
                             child: Text(
@@ -284,15 +306,18 @@ class _DetailsPrestataireState extends State<DetailsPrestataire> {
                                 SizeConfig.blockSizeHorizontal * 10,
                               ),
                             ),
-                            child: widget.prestataire.avatarUrl == null
-                                ? Image.asset(
-                                    '${Utilities().imagePath}ouvrier2.jpeg',
-                                    fit: BoxFit.cover,
-                                  )
-                                : Image.network(
-                                    widget.prestataire.avatarUrl!,
-                                    fit: BoxFit.cover,
-                                  ),
+                            child: GestureDetector(
+                              onTap: _openPrestataireMainPhotoViewer,
+                              child: widget.prestataire.avatarUrl == null
+                                  ? Image.asset(
+                                      '${Utilities().imagePath}ouvrier2.jpeg',
+                                      fit: BoxFit.cover,
+                                    )
+                                  : Image.network(
+                                      widget.prestataire.avatarUrl!,
+                                      fit: BoxFit.cover,
+                                    ),
+                            ),
                           ),
                         ),
                         SizedBox(
@@ -300,14 +325,15 @@ class _DetailsPrestataireState extends State<DetailsPrestataire> {
                           child: Row(
                             mainAxisAlignment: MainAxisAlignment.spaceBetween,
                             children: [
-                              Padding(
-                                padding: EdgeInsetsGeometry.only(
-                                  left: SizeConfig.blockSizeHorizontal * 5,
-                                ),
-                                child: Column(
-                                  crossAxisAlignment: CrossAxisAlignment.start,
-                                  mainAxisSize: MainAxisSize.min,
-                                  children: [
+                              Expanded(
+                                child: Padding(
+                                  padding: EdgeInsetsGeometry.only(
+                                    left: SizeConfig.blockSizeHorizontal * 5,
+                                  ),
+                                  child: Column(
+                                    crossAxisAlignment: CrossAxisAlignment.start,
+                                    mainAxisSize: MainAxisSize.min,
+                                    children: [
                                     Text(
                                       widget.prestataire.nom,
                                       maxLines: 1,
@@ -334,6 +360,9 @@ class _DetailsPrestataireState extends State<DetailsPrestataire> {
                                           : widget
                                                 .prestataire
                                                 .distanceAffichage,
+                                      maxLines: 2,
+                                      overflow: TextOverflow.ellipsis,
+                                      softWrap: true,
                                       style: TextStyle(
                                         fontSize: SizeConfig.fontSize(
                                           SizeConfig.blockSizeHorizontal * 3,
@@ -367,6 +396,7 @@ class _DetailsPrestataireState extends State<DetailsPrestataire> {
                                       ),
                                     ],
                                   ],
+                                ),
                                 ),
                               ),
                               Padding(

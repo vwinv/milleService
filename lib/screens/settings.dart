@@ -2,7 +2,7 @@ import 'package:easy_localization/easy_localization.dart';
 import 'package:flutter/material.dart';
 import 'package:milleservices/providers/userProvider.dart';
 import 'package:milleservices/services/app_locale.dart';
-import 'package:milleservices/services/prestataire_home_resolver.dart';
+import 'package:milleservices/services/home_resolver.dart';
 import 'package:milleservices/services/sizeConfig.dart';
 import 'package:milleservices/services/utilities.dart';
 import 'package:milleservices/widgets/customButton.dart';
@@ -146,13 +146,8 @@ class _SettingsState extends State<Settings> {
     Navigator.pushReplacement(
       context,
       MaterialPageRoute<void>(
-        builder: (_) => resolvePrestataireHome(
-          statutVerificationRaw:
-              userProvider.user?.statutVerification?.toString().toUpperCase() ??
-              '',
-          settings: settings,
-          userProvider: userProvider,
-        ),
+        builder: (_) =>
+            resolveHome(settings: settings, userProvider: userProvider),
       ),
     );
   }

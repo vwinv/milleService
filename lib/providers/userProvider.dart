@@ -164,36 +164,55 @@ class UserProvider extends ChangeNotifier {
     String password, {
     List<Map<String, String>>? documents,
     List<String>? serviceIds,
+    bool manageLoading = true,
+  }) async {
+    if (manageLoading) setLoading(true);
+    try {
+      final data = await authcontroller.singUp(
+        usr,
+        password,
+        documents: documents,
+        serviceIds: serviceIds,
+      );
+      print("data: ${data.data}");
+      if (data.success == true) {
+        final payload = data.data ?? {};
+        _user = User.fromJson(payload['user']);
+        final aboJson = payload['abonnement'];
+        _abonnement = aboJson != null ? Abonnement.fromJson(aboJson) : null;
+        _token = payload['access_token'];
+        _Rtoken = payload['refresh_token'];
+
+        notifyListeners();
+
+        final prefs = await SharedPreferences.getInstance();
+        await prefs.setString("user", User.encode(user!));
+        await prefs.setString("token", _token!);
+        await prefs.setString("Rtoken", _Rtoken!);
+        if (_abonnement != null) {
+          await prefs.setString("abonnement", Abonnement.encode(_abonnement!));
+        } else {
+          await prefs.remove("abonnement");
+        }
+        await LiveLocationForegroundService.startIfAuthenticated(_user, _token);
+      }
+      return data;
+    } finally {
+      if (manageLoading) setLoading(false);
+    }
+  }
+
+  Future<ResponseData> forgotPassword({
+    required String email,
+    required String telephone,
+    required String newPassword,
   }) async {
     setLoading(true);
-    final data = await authcontroller.singUp(
-      usr,
-      password,
-      documents: documents,
-      serviceIds: serviceIds,
+    final data = await authcontroller.forgotPassword(
+      email: email,
+      telephone: telephone,
+      newPassword: newPassword,
     );
-    print("data: ${data.data}");
-    if (data.success == true) {
-      final payload = data.data ?? {};
-      _user = User.fromJson(payload['user']);
-      final aboJson = payload['abonnement'];
-      _abonnement = aboJson != null ? Abonnement.fromJson(aboJson) : null;
-      _token = payload['access_token'];
-      _Rtoken = payload['refresh_token'];
-
-      notifyListeners();
-
-      final prefs = await SharedPreferences.getInstance();
-      await prefs.setString("user", User.encode(user!));
-      await prefs.setString("token", _token!);
-      await prefs.setString("Rtoken", _Rtoken!);
-      if (_abonnement != null) {
-        await prefs.setString("abonnement", Abonnement.encode(_abonnement!));
-      } else {
-        await prefs.remove("abonnement");
-      }
-      await LiveLocationForegroundService.startIfAuthenticated(_user, _token);
-    }
     setLoading(false);
     return data;
   }
@@ -415,6 +434,62 @@ class UserProvider extends ChangeNotifier {
       return data;
     } finally {
       setLoading(false);
+    }
+  }
+
+  /// Prépare le paiement PayDunya pour l’abonnement (retourne `checkoutUrl` + `invoiceToken` dans `data`).
+  Future<ResponseData> initPaydunyaAbonnement(String offreId) async {
+    setLoading(true);
+    try {
+      var data = await authcontroller.initPaydunyaAbonnement(offreId, _token);
+      if (data.status == 401) {
+        await refreshToken();
+        if (_token != null) {
+          data = await authcontroller.initPaydunyaAbonnement(offreId, _token);
+        }
+      }
+      return data;
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  /// Applique le JSON « abonnement courant » (ex. renvoyé avec invoice-paid) sans second GET.
+  Future<void> applyAbonnementCourantPayload(dynamic payload) async {
+    if (payload == null) {
+      _abonnement = null;
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.remove("abonnement");
+      notifyListeners();
+      return;
+    }
+    _abonnement = Abonnement.fromJson(payload);
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString("abonnement", Abonnement.encode(_abonnement!));
+    notifyListeners();
+  }
+
+  /// Resynchronise l’abonnement courant depuis l’API (après retour PayDunya / IPN).
+  Future<void> refreshAbonnementCourant() async {
+    if (_token == null || _token!.isEmpty) return;
+    var res = await authcontroller.getAbonnementCourant(_token);
+    if (res.status == 401) {
+      await refreshToken();
+      if (_token != null && _token!.isNotEmpty) {
+        res = await authcontroller.getAbonnementCourant(_token);
+      }
+    }
+    if (res.success == true) {
+      if (res.data != null) {
+        _abonnement = Abonnement.fromJson(res.data);
+        final prefs = await SharedPreferences.getInstance();
+        await prefs.setString("abonnement", Abonnement.encode(_abonnement!));
+      } else {
+        _abonnement = null;
+        final prefs = await SharedPreferences.getInstance();
+        await prefs.remove("abonnement");
+      }
+      notifyListeners();
     }
   }
 

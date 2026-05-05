@@ -6,6 +6,7 @@ import 'package:dio/dio.dart';
 import 'package:flutter_foreground_task/flutter_foreground_task.dart';
 import 'package:milleservices/services/device_location_service.dart';
 import 'package:milleservices/services/live_location_sync.dart';
+import 'package:milleservices/services/utilities.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 /// Point d’entrée isolé requis par [flutter_foreground_task] (ne pas supprimer).
@@ -38,6 +39,7 @@ class LiveLocationTaskHandler extends TaskHandler {
   Future<void> onDestroy(DateTime timestamp, bool isTimeout) async {}
 
   Future<void> _tick() async {
+    if (!Utilities.useRealtimeLocation) return;
     if (!await LiveLocationSync.shouldSendToServer()) return;
 
     final prefs = await SharedPreferences.getInstance();

@@ -77,12 +77,12 @@ class Authcontroller {
       }
 
       final loginStr = login.toString().trim();
-      final isEmail = loginStr.contains('@');
+      final isAdmin = role == 'ADMIN';
       final response = await dio.post(
         "/auth/login",
         data: jsonEncode({
-          if (isEmail) 'email': loginStr,
-          if (!isEmail) 'telephone': loginStr,
+          if (isAdmin) 'email': loginStr,
+          if (!isAdmin) 'telephone': loginStr,
           'password': mdp,
           'role': role,
         }),
@@ -225,11 +225,35 @@ class Authcontroller {
     }
   }
 
-  String? _dioErrorMessage(DioException e) {
-    final d = e.response?.data;
-    if (d is Map && d['message'] != null) {
-      return d['message'].toString();
+  /// Corps d'erreur Nest (`message` string ou liste pour class-validator).
+  String? _nestApiMessage(dynamic responseBody) {
+    if (responseBody is! Map) return null;
+    final m = responseBody['message'];
+    if (m == null) return null;
+    if (m is String) {
+      final t = m.trim();
+      return t.isEmpty ? null : t;
     }
+    if (m is List) {
+      final parts = <String>[];
+      for (final item in m) {
+        if (item is String && item.trim().isNotEmpty) {
+          parts.add(item.trim());
+        } else if (item != null) {
+          final s = item.toString().trim();
+          if (s.isNotEmpty) parts.add(s);
+        }
+      }
+      if (parts.isEmpty) return null;
+      return parts.join('\n');
+    }
+    final s = m.toString().trim();
+    return s.isEmpty ? null : s;
+  }
+
+  String? _dioErrorMessage(DioException e) {
+    final fromBody = _nestApiMessage(e.response?.data);
+    if (fromBody != null) return fromBody;
     return e.message;
   }
 
@@ -372,14 +396,17 @@ class Authcontroller {
 
       return finalResponse;
     } on DioException catch (e) {
-      // ⚠️ Erreur côté backend (ex: 400, 401, 500)
+      // Erreurs HTTP (409 email dupliqué, 400 validation, etc.) : message Nest dans le corps.
       if (e.response != null) {
+        final raw = e.response!.data;
+        final msg = _nestApiMessage(raw) ?? 'Erreur serveur';
+        final emailNv = raw is Map ? raw['emailNotVerified'] : null;
         ResponseData finalResponse = ResponseData.fromJson({
           "success": false,
           "data": [],
           "status": e.response!.statusCode,
-          "emailNotVerified": e.response?.data["emailNotVerified"] ?? "null",
-          "message": e.response?.data["message"] ?? "Erreur serveur",
+          "emailNotVerified": emailNv ?? 'null',
+          "message": msg,
         });
         return finalResponse;
       } else {
@@ -401,6 +428,71 @@ class Authcontroller {
         "message": "Erreur inconnue",
       });
       return finalResponse;
+    }
+  }
+
+  Future<ResponseData> forgotPassword({
+    required String email,
+    required String telephone,
+    required String newPassword,
+  }) async {
+    try {
+      final hasInternet = await _checkInternetConnection();
+      if (!hasInternet) {
+        return ResponseData(
+          success: false,
+          message:
+              "Aucune connexion internet. Veuillez vérifier votre connexion et réessayer.",
+          data: null,
+          status: 0,
+          emailNotVerified: false,
+        );
+      }
+
+      final response = await dio.post(
+        "/auth/forgot-password",
+        data: jsonEncode({
+          "email": email.trim(),
+          "telephone": telephone.trim(),
+          "newPassword": newPassword,
+        }),
+        options: Options(headers: {"Content-Type": "application/json"}),
+      );
+
+      return ResponseData.fromJson({
+        "success": response.data['success'] ?? true,
+        "data": response.data['data'] ?? response.data,
+        "status": response.statusCode,
+        "message":
+            response.data["message"] ?? "Mot de passe mis à jour avec succès",
+        "emailNotVerified": false,
+      });
+    } on DioException catch (e) {
+      if (e.response != null) {
+        final raw = e.response!.data;
+        return ResponseData.fromJson({
+          "success": false,
+          "data": [],
+          "status": e.response!.statusCode,
+          "message": _nestApiMessage(raw) ?? "Erreur serveur",
+          "emailNotVerified": false,
+        });
+      }
+      return ResponseData.fromJson({
+        "success": false,
+        "data": [],
+        "status": 500,
+        "message": _networkErrorMessageForUser(e),
+        "emailNotVerified": false,
+      });
+    } catch (_) {
+      return ResponseData.fromJson({
+        "success": false,
+        "data": [],
+        "status": 500,
+        "message": "Erreur inconnue",
+        "emailNotVerified": false,
+      });
     }
   }
 
@@ -744,6 +836,365 @@ class Authcontroller {
         "message": "Erreur inconnue",
         "emailNotVerified": false,
       });
+    }
+  }
+
+  /// Prépare un paiement PayDunya pour souscrire (checkout + token facture).
+  Future<ResponseData> initPaydunyaAbonnement(
+    String offreId,
+    String? token,
+  ) async {
+    try {
+      final hasInternet = await _checkInternetConnection();
+      if (!hasInternet) {
+        return ResponseData(
+          success: false,
+          message:
+              "Aucune connexion internet. Veuillez vérifier votre connexion et réessayer.",
+          data: null,
+          status: 0,
+          emailNotVerified: false,
+        );
+      }
+      if (token == null || token.isEmpty) {
+        return ResponseData(
+          success: false,
+          message: "Utilisateur non authentifié",
+          data: null,
+          status: 401,
+          emailNotVerified: false,
+        );
+      }
+      final response = await dio.post(
+        "/abonnements/souscrire/paydunya/init",
+        data: jsonEncode({"offreId": offreId}),
+        options: Options(
+          headers: {
+            "Content-Type": "application/json",
+            "Authorization": "Bearer $token",
+          },
+          validateStatus: (status) => status != null && status < 500,
+        ),
+      );
+      return ResponseData.fromJson({
+        "success": response.statusCode == 200 || response.statusCode == 201,
+        "data": response.data['data'] ?? response.data,
+        "status": response.statusCode,
+        "message": response.data is Map ? (response.data['message'] ?? "") : "",
+        "emailNotVerified": false,
+      });
+    } on DioException catch (e) {
+      if (e.response != null) {
+        return ResponseData.fromJson({
+          "success": false,
+          "data": null,
+          "status": e.response!.statusCode,
+          "message": e.response?.data is Map
+              ? (e.response!.data['message'] ?? "Erreur serveur")
+              : "Erreur serveur",
+          "emailNotVerified": false,
+        });
+      }
+      return ResponseData(
+        success: false,
+        message: "Erreur réseau",
+        data: null,
+        status: 500,
+        emailNotVerified: false,
+      );
+    } catch (_) {
+      return ResponseData(
+        success: false,
+        message: "Erreur inconnue",
+        data: null,
+        status: 500,
+        emailNotVerified: false,
+      );
+    }
+  }
+
+  Future<ResponseData> _abonnementPaydunyaSoftPay({
+    required String token,
+    required String offreId,
+    required String invoiceToken,
+    required String prenom,
+    required String nom,
+    required String telephone,
+    String? email,
+    required String endpointSegment,
+  }) async {
+    try {
+      final hasInternet = await _checkInternetConnection();
+      if (!hasInternet) {
+        return ResponseData(
+          success: false,
+          message:
+              "Aucune connexion internet. Veuillez vérifier votre connexion et réessayer.",
+          data: null,
+          status: 0,
+          emailNotVerified: false,
+        );
+      }
+      if (token.isEmpty) {
+        return ResponseData(
+          success: false,
+          message: "Utilisateur non authentifié",
+          data: null,
+          status: 401,
+          emailNotVerified: false,
+        );
+      }
+      final path = '/abonnements/souscrire/paydunya/$endpointSegment';
+      final body = <String, dynamic>{
+        'offreId': offreId,
+        'invoiceToken': invoiceToken.trim(),
+        'prenom': prenom,
+        'nom': nom,
+        'telephone': telephone,
+        if (email != null && email.trim().isNotEmpty) 'email': email.trim(),
+      };
+      final response = await dio.post(
+        path,
+        data: body,
+        options: Options(
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': 'Bearer $token',
+          },
+          validateStatus: (status) => status != null && status < 500,
+        ),
+      );
+      final raw = response.data;
+      final data = raw is Map && raw['data'] != null
+          ? raw['data']
+          : raw is Map
+              ? raw
+              : null;
+      final ok = response.statusCode == 200 || response.statusCode == 201;
+      return ResponseData.fromJson({
+        'success': ok,
+        'data': data,
+        'message': raw is Map ? (raw['message'] ?? '') : '',
+        'status': response.statusCode,
+        'emailNotVerified': false,
+      });
+    } on DioException catch (e) {
+      if (e.response != null) {
+        return ResponseData.fromJson({
+          'success': false,
+          'data': null,
+          'status': e.response!.statusCode,
+          'message': e.response?.data is Map
+              ? (e.response!.data['message'] ?? 'Erreur serveur')
+              : 'Erreur serveur',
+          'emailNotVerified': false,
+        });
+      }
+      return ResponseData(
+        success: false,
+        message: 'Erreur réseau',
+        data: null,
+        status: 500,
+        emailNotVerified: false,
+      );
+    } catch (_) {
+      return ResponseData(
+        success: false,
+        message: 'Erreur inconnue',
+        data: null,
+        status: 500,
+        emailNotVerified: false,
+      );
+    }
+  }
+
+  Future<ResponseData> payAbonnementWaveSn({
+    required String token,
+    required String offreId,
+    required String invoiceToken,
+    required String prenom,
+    required String nom,
+    required String telephone,
+    String? email,
+  }) {
+    return _abonnementPaydunyaSoftPay(
+      token: token,
+      offreId: offreId,
+      invoiceToken: invoiceToken,
+      prenom: prenom,
+      nom: nom,
+      telephone: telephone,
+      email: email,
+      endpointSegment: 'wave',
+    );
+  }
+
+  Future<ResponseData> payAbonnementOrangeMoneySn({
+    required String token,
+    required String offreId,
+    required String invoiceToken,
+    required String prenom,
+    required String nom,
+    required String telephone,
+    String? email,
+  }) {
+    return _abonnementPaydunyaSoftPay(
+      token: token,
+      offreId: offreId,
+      invoiceToken: invoiceToken,
+      prenom: prenom,
+      nom: nom,
+      telephone: telephone,
+      email: email,
+      endpointSegment: 'orange-money',
+    );
+  }
+
+  Future<ResponseData> payAbonnementFreeMoneySn({
+    required String token,
+    required String offreId,
+    required String invoiceToken,
+    required String prenom,
+    required String nom,
+    required String telephone,
+    String? email,
+  }) {
+    return _abonnementPaydunyaSoftPay(
+      token: token,
+      offreId: offreId,
+      invoiceToken: invoiceToken,
+      prenom: prenom,
+      nom: nom,
+      telephone: telephone,
+      email: email,
+      endpointSegment: 'free-money',
+    );
+  }
+
+  /// Abonnement actif du prestataire (`null` si aucun).
+  Future<ResponseData> getAbonnementCourant(String? token) async {
+    try {
+      if (token == null || token.isEmpty) {
+        return ResponseData(
+          success: false,
+          message: "Utilisateur non authentifié",
+          data: null,
+          status: 401,
+          emailNotVerified: false,
+        );
+      }
+      final response = await dio.get(
+        "/abonnements/courant",
+        options: Options(
+          headers: {"Authorization": "Bearer $token"},
+          validateStatus: (status) => status != null && status < 500,
+        ),
+      );
+      final raw = response.data;
+      final payload =
+          raw is Map && raw['data'] != null ? raw['data'] : raw is Map ? raw : null;
+      return ResponseData(
+        success: response.statusCode == 200,
+        data: payload,
+        status: response.statusCode,
+        message: raw is Map ? (raw['message'] ?? '') : '',
+        emailNotVerified: false,
+      );
+    } on DioException catch (e) {
+      if (e.response != null) {
+        return ResponseData(
+          success: false,
+          data: null,
+          status: e.response!.statusCode,
+          message: e.response?.data is Map
+              ? (e.response!.data['message'] ?? "Erreur serveur")
+              : "Erreur serveur",
+          emailNotVerified: false,
+        );
+      }
+      return ResponseData(
+        success: false,
+        message: "Erreur réseau",
+        data: null,
+        status: 500,
+        emailNotVerified: false,
+      );
+    } catch (_) {
+      return ResponseData(
+        success: false,
+        message: "Erreur inconnue",
+        data: null,
+        status: 500,
+        emailNotVerified: false,
+      );
+    }
+  }
+
+  /// Indique si l’IPN PayDunya a enregistré le paiement pour ce [invoiceToken] (abonnement).
+  Future<ResponseData> isAbonnementPaydunyaInvoicePaid({
+    required String? token,
+    required String invoiceToken,
+  }) async {
+    try {
+      if (token == null || token.isEmpty) {
+        return ResponseData(
+          success: false,
+          message: "Utilisateur non authentifié",
+          data: null,
+          status: 401,
+          emailNotVerified: false,
+        );
+      }
+      final response = await dio.get(
+        "/abonnements/souscrire/paydunya/invoice-paid",
+        queryParameters: {"invoiceToken": invoiceToken},
+        options: Options(
+          headers: {"Authorization": "Bearer $token"},
+          validateStatus: (status) => status != null && status < 500,
+        ),
+      );
+      final raw = response.data;
+      Map<String, dynamic>? map;
+      if (raw is Map) {
+        map = Map<String, dynamic>.from(raw);
+      }
+      final inner = map != null && map['data'] != null && map['data'] is Map
+          ? Map<String, dynamic>.from(map['data'] as Map)
+          : map;
+      return ResponseData(
+        success: response.statusCode == 200,
+        data: inner,
+        status: response.statusCode,
+        message: map != null ? (map['message']?.toString() ?? '') : '',
+        emailNotVerified: false,
+      );
+    } on DioException catch (e) {
+      if (e.response != null) {
+        return ResponseData(
+          success: false,
+          data: null,
+          status: e.response!.statusCode,
+          message: e.response?.data is Map
+              ? (e.response!.data['message'] ?? "Erreur serveur")
+              : "Erreur serveur",
+          emailNotVerified: false,
+        );
+      }
+      return ResponseData(
+        success: false,
+        message: "Erreur réseau",
+        data: null,
+        status: 500,
+        emailNotVerified: false,
+      );
+    } catch (_) {
+      return ResponseData(
+        success: false,
+        message: "Erreur inconnue",
+        data: null,
+        status: 500,
+        emailNotVerified: false,
+      );
     }
   }
 }

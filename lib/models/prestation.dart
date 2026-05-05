@@ -123,8 +123,8 @@ class PrestationParticulier {
       prenom: json['prenom']?.toString(),
       nom: json['nom']?.toString(),
       telephone: json['telephone']?.toString(),
-      latitude: _parseDouble(json['latitude']),
-      longitude: _parseDouble(json['longitude']),
+      latitude: _parseDouble(json['latitude'] ?? json['lat']),
+      longitude: _parseDouble(json['longitude'] ?? json['lng'] ?? json['lon']),
     );
   }
 
@@ -149,7 +149,9 @@ class PrestationService {
     return PrestationService(
       id: json['id']?.toString(),
       libelle: json['libelle']?.toString(),
-      tarifHoraire: _parseDouble(json['tarifHoraire']),
+      tarifHoraire: _parseDouble(
+        json['tarifHoraire'] ?? json['tarif_horaire'],
+      ),
     );
   }
 }

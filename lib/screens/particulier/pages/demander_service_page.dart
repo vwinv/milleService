@@ -25,12 +25,10 @@ class _DemanderServicePageState extends State<DemanderServicePage> {
 
   int? _selectedCategorie;
   int? _selectedDisponibilite;
-  int? _selectedTarif;
   int? _selectedAvis;
 
   bool _openCategories = false;
   bool _openDisponibilite = false;
-  bool _openTarifs = false;
   bool _openAvis = false;
 
   DateTime? _plannedDate;
@@ -41,40 +39,6 @@ class _DemanderServicePageState extends State<DemanderServicePage> {
     'Urgence',
     'Planifier',
   ];
-
-  final List<String> _tarifs = const [
-    '5 000 FCFA',
-    '10 000 FCFA',
-    '20 000 FCFA',
-    '30 000 FCFA',
-    '40 000 FCFA',
-    '50 000 FCFA',
-    'Plus',
-  ];
-
-  /// Mapping de l'index de tarif vers une fourchette (min/max) en FCFA.
-  /// 0: [0, 5000], 1: [5000, 10000], ..., 5: [40000, 50000], 6: [50000, null]
-  (double?, double?) _mapTarifIndexToRange(int? index) {
-    if (index == null) return (null, null);
-    switch (index) {
-      case 0:
-        return (0, 5000);
-      case 1:
-        return (5000, 10000);
-      case 2:
-        return (10000, 20000);
-      case 3:
-        return (20000, 30000);
-      case 4:
-        return (30000, 40000);
-      case 5:
-        return (40000, 50000);
-      case 6:
-        return (50000, null);
-      default:
-        return (null, null);
-    }
-  }
 
   @override
   void initState() {
@@ -192,8 +156,6 @@ class _DemanderServicePageState extends State<DemanderServicePage> {
                 _buildCategoriesSection(),
                 SizedBox(height: SizeConfig.blockSizeVertical * 1),
                 _buildDisponibiliteSection(),
-                SizedBox(height: SizeConfig.blockSizeVertical * 1),
-                _buildTarifsSection(),
                 /*  SizedBox(height: SizeConfig.blockSizeVertical * 2),
                 _buildAvisSection(), */
                 SizedBox(height: SizeConfig.blockSizeVertical * 5),
@@ -224,8 +186,6 @@ class _DemanderServicePageState extends State<DemanderServicePage> {
                   borderRadius: SizeConfig.blockSizeHorizontal * 10,
                 ),
 
-                SizedBox(height: SizeConfig.blockSizeVertical * 3),
-                _buildSearchResults(),
               ],
             ),
           ),
@@ -247,10 +207,6 @@ class _DemanderServicePageState extends State<DemanderServicePage> {
       final ServiceCategory selectedService = services[_selectedCategorie!];
       serviceId = selectedService.id;
     }
-    final (double? tarifMin, double? tarifMax) = _mapTarifIndexToRange(
-      _selectedTarif,
-    );
-
     String? dateParam;
     if (_selectedDisponibilite == 3 && _plannedDate != null) {
       // Planifier -> on envoie la date au format YYYY-MM-DD
@@ -262,8 +218,8 @@ class _DemanderServicePageState extends State<DemanderServicePage> {
     final userProvider = context.read<UserProvider>();
     await prestatairesProvider.loadSearch(
       serviceId: serviceId,
-      tarifMin: tarifMin,
-      tarifMax: tarifMax,
+      tarifMin: null,
+      tarifMax: null,
       date: dateParam,
       userProvider: userProvider,
     );
@@ -503,51 +459,6 @@ class _DemanderServicePageState extends State<DemanderServicePage> {
     );
   }
 
-  Widget _buildTarifsSection() {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: [
-        Container(
-          decoration: BoxDecoration(
-            color: Utilities().colorGreyLight,
-            borderRadius: BorderRadius.circular(
-              SizeConfig.blockSizeHorizontal * 10,
-            ),
-            border: Border.all(color: Utilities().colorGreyLightDark, width: 1),
-          ),
-          padding: EdgeInsets.symmetric(
-            horizontal: SizeConfig.blockSizeHorizontal * 5,
-            vertical: SizeConfig.blockSizeVertical * 1.5,
-          ),
-          child: _buildSectionHeader(
-            'Tarifs',
-            isOpen: _openTarifs,
-            onTap: () => setState(() => _openTarifs = !_openTarifs),
-          ),
-        ),
-        if (_openTarifs) SizedBox(height: SizeConfig.blockSizeVertical * 1.5),
-        if (_openTarifs)
-          Wrap(
-            spacing: SizeConfig.blockSizeHorizontal * 2.5,
-            runSpacing: SizeConfig.blockSizeVertical * 1.5,
-            children: List.generate(_tarifs.length, (index) {
-              final selected = _selectedTarif == index;
-              return GestureDetector(
-                onTap: () {
-                  setState(() => _selectedTarif = index);
-                },
-                child: _buildPillChip(
-                  label: _tarifs[index],
-                  selected: selected,
-                  icon: index == _tarifs.length - 1 ? Icons.add : null,
-                ),
-              );
-            }),
-          ),
-      ],
-    );
-  }
-
   Widget _buildAvisChip(String label, int stars, bool selected) {
     final bg = selected ? Utilities().colorBlueDark : Colors.white;
     final fg = selected ? Colors.white : Colors.black;
@@ -635,161 +546,4 @@ class _DemanderServicePageState extends State<DemanderServicePage> {
     );
   }
 
-  /// Affiche les résultats de recherche en dessous du bouton.
-  Widget _buildSearchResults() {
-    return Consumer<PrestatairesProvider>(
-      builder: (context, provider, _) {
-        if (provider.searchLoading) {
-          return Center(
-            child: Padding(
-              padding: EdgeInsets.only(top: SizeConfig.blockSizeVertical * 2),
-              child: CircularProgressIndicator(
-                color: Utilities().colorBlueDark,
-              ),
-            ),
-          );
-        }
-
-        if (provider.searchError != null) {
-          return Padding(
-            padding: EdgeInsets.only(top: SizeConfig.blockSizeVertical * 2),
-            child: Text(
-              provider.searchError!,
-              style: TextStyle(
-                color: Colors.red,
-                fontSize: SizeConfig.fontSize(
-                  SizeConfig.blockSizeHorizontal * 3,
-                ),
-              ),
-            ),
-          );
-        }
-
-        if (provider.searchResults.isEmpty) {
-          return const SizedBox.shrink();
-        }
-
-        return Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(
-              'Résultats (${provider.searchResults.length})',
-              style: TextStyle(
-                color: Utilities().colorBlueDark,
-                fontWeight: FontWeight.bold,
-                fontSize: SizeConfig.fontSize(
-                  SizeConfig.blockSizeHorizontal * 3.5,
-                ),
-              ),
-            ),
-            SizedBox(height: SizeConfig.blockSizeVertical * 1.5),
-            ...provider.searchResults.map((p) {
-              return Container(
-                margin: EdgeInsets.only(
-                  bottom: SizeConfig.blockSizeVertical * 1.5,
-                ),
-                padding: EdgeInsets.symmetric(
-                  horizontal: SizeConfig.blockSizeHorizontal * 4,
-                  vertical: SizeConfig.blockSizeVertical * 1.5,
-                ),
-                decoration: BoxDecoration(
-                  color: Colors.white,
-                  borderRadius: BorderRadius.circular(
-                    SizeConfig.blockSizeHorizontal * 4,
-                  ),
-                  boxShadow: [
-                    BoxShadow(
-                      color: Colors.black.withOpacity(0.05),
-                      blurRadius: 6,
-                      offset: const Offset(0, 2),
-                    ),
-                  ],
-                ),
-                child: Row(
-                  crossAxisAlignment: CrossAxisAlignment.center,
-                  children: [
-                    CircleAvatar(
-                      radius: SizeConfig.blockSizeHorizontal * 6,
-                      backgroundColor: Utilities().colorGreyLight,
-                      backgroundImage: p.avatarUrl != null
-                          ? NetworkImage(p.avatarUrl!)
-                          : null,
-                      child: p.avatarUrl == null
-                          ? Icon(Icons.person, color: Utilities().colorBlueDark)
-                          : null,
-                    ),
-                    SizedBox(width: SizeConfig.blockSizeHorizontal * 4),
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            p.nom,
-                            style: TextStyle(
-                              fontWeight: FontWeight.w600,
-                              fontSize: SizeConfig.fontSize(
-                                SizeConfig.blockSizeHorizontal * 3.4,
-                              ),
-                              color: Utilities().colorBlueDark,
-                            ),
-                          ),
-                          SizedBox(height: SizeConfig.blockSizeVertical * 0.5),
-                          Text(
-                            p.zoneAffichage,
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                            style: TextStyle(
-                              fontSize: SizeConfig.fontSize(
-                                SizeConfig.blockSizeHorizontal * 2.7,
-                              ),
-                              color: Colors.grey[700],
-                            ),
-                          ),
-                          SizedBox(height: SizeConfig.blockSizeVertical * 0.5),
-                          Row(
-                            children: [
-                              Icon(
-                                Icons.star,
-                                size: 16,
-                                color: Utilities().colorYellow,
-                              ),
-                              SizedBox(
-                                width: SizeConfig.blockSizeHorizontal * 1,
-                              ),
-                              Text(
-                                '${p.noteMoyenne.toStringAsFixed(1)}/${p.noteSur}',
-                                style: TextStyle(
-                                  fontSize: SizeConfig.fontSize(
-                                    SizeConfig.blockSizeHorizontal * 2.7,
-                                  ),
-                                  color: Utilities().colorBlueDark,
-                                  fontWeight: FontWeight.w500,
-                                ),
-                              ),
-                              SizedBox(
-                                width: SizeConfig.blockSizeHorizontal * 2,
-                              ),
-                              Text(
-                                '(${p.nbAvis} avis)',
-                                style: TextStyle(
-                                  fontSize: SizeConfig.fontSize(
-                                    SizeConfig.blockSizeHorizontal * 2.5,
-                                  ),
-                                  color: Colors.grey[700],
-                                ),
-                              ),
-                            ],
-                          ),
-                        ],
-                      ),
-                    ),
-                  ],
-                ),
-              );
-            }).toList(),
-          ],
-        );
-      },
-    );
-  }
 }

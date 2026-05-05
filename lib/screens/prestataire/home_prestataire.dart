@@ -51,19 +51,24 @@ class _HomePrestataireState extends State<HomePrestataire> {
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _loadPrestationStats();
       _loadCataloguePhotos();
-      unawaited(_syncPrestataireGps());
+      if (Utilities.useRealtimeLocation) {
+        unawaited(_syncPrestataireGps());
+      }
     });
     _statsTimer = Timer.periodic(const Duration(seconds: 15), (_) {
       if (mounted) {
         _loadPrestationStats();
       }
     });
-    _locationTimer = Timer.periodic(const Duration(seconds: 45), (_) {
-      if (mounted) unawaited(_syncPrestataireGps());
-    });
+    if (Utilities.useRealtimeLocation) {
+      _locationTimer = Timer.periodic(const Duration(seconds: 45), (_) {
+        if (mounted) unawaited(_syncPrestataireGps());
+      });
+    }
   }
 
   Future<void> _syncPrestataireGps() async {
+    if (!Utilities.useRealtimeLocation) return;
     final ll = await DeviceLocationService.getCurrentLatLngOrNull();
     if (!mounted || ll == null) return;
     if (!mounted) return;

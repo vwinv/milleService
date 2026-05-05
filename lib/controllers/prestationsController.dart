@@ -2,8 +2,26 @@ import 'dart:async';
 import 'dart:io';
 
 import 'package:dio/dio.dart';
+import 'package:flutter/foundation.dart';
 import 'package:milleservices/models/response.dart';
 import 'package:milleservices/services/utilities.dart';
+
+void _paiementLog(String message) {
+  debugPrint('[MilleServices][Paiement] $message');
+}
+
+String _maskInvoiceToken(String? token) {
+  final t = token?.trim() ?? '';
+  if (t.isEmpty) return '(vide)';
+  if (t.length <= 8) return '***';
+  return '${t.substring(0, 6)}…';
+}
+
+String _maskPhoneForLog(String phone) {
+  final d = phone.replaceAll(RegExp(r'\s'), '');
+  if (d.length <= 2) return '***';
+  return '***${d.substring(d.length - 2)}';
+}
 
 class PrestationsController {
   PrestationsController._instantiate();
@@ -253,6 +271,317 @@ class PrestationsController {
         'emailNotVerified': false,
       });
     } catch (e) {
+      return ResponseData.fromJson({
+        'success': false,
+        'data': null,
+        'status': 500,
+        'message': 'Erreur inconnue',
+        'emailNotVerified': false,
+      });
+    }
+  }
+
+  /// Wave Sénégal — POST …/paiement/paydunya/wave (PayDunya `wave-senegal`).
+  Future<ResponseData> payWithWaveSn({
+    required String token,
+    required String prestationId,
+    required String invoiceToken,
+    required String prenom,
+    required String nom,
+    required String telephone,
+    String? email,
+  }) {
+    return _prestationPaydunyaSoftPay(
+      token: token,
+      prestationId: prestationId,
+      invoiceToken: invoiceToken,
+      prenom: prenom,
+      nom: nom,
+      telephone: telephone,
+      email: email,
+      endpointSegment: 'wave',
+      logName: 'payWithWave',
+    );
+  }
+
+  /// Orange Money Sénégal — POST …/paiement/paydunya/orange-money.
+  Future<ResponseData> payWithOrangeMoneySn({
+    required String token,
+    required String prestationId,
+    required String invoiceToken,
+    required String prenom,
+    required String nom,
+    required String telephone,
+    String? email,
+  }) {
+    return _prestationPaydunyaSoftPay(
+      token: token,
+      prestationId: prestationId,
+      invoiceToken: invoiceToken,
+      prenom: prenom,
+      nom: nom,
+      telephone: telephone,
+      email: email,
+      endpointSegment: 'orange-money',
+      logName: 'payWithOrangeMoney',
+    );
+  }
+
+  /// Free Money Sénégal — POST …/paiement/paydunya/free-money.
+  Future<ResponseData> payWithFreeMoneySn({
+    required String token,
+    required String prestationId,
+    required String invoiceToken,
+    required String prenom,
+    required String nom,
+    required String telephone,
+    String? email,
+  }) {
+    return _prestationPaydunyaSoftPay(
+      token: token,
+      prestationId: prestationId,
+      invoiceToken: invoiceToken,
+      prenom: prenom,
+      nom: nom,
+      telephone: telephone,
+      email: email,
+      endpointSegment: 'free-money',
+      logName: 'payWithFreeMoney',
+    );
+  }
+
+  /// Paiement mobile (legacy) — POST …/paiement/paydunya/softpay avec `method` dans le corps.
+  Future<ResponseData> softPayPrestation({
+    required String token,
+    required String prestationId,
+    required String invoiceToken,
+    required String method,
+    required String prenom,
+    required String nom,
+    required String telephone,
+    String? email,
+  }) {
+    return _prestationPaydunyaSoftPay(
+      token: token,
+      prestationId: prestationId,
+      invoiceToken: invoiceToken,
+      prenom: prenom,
+      nom: nom,
+      telephone: telephone,
+      email: email,
+      endpointSegment: 'softpay',
+      softpayMethod: method,
+      logName: 'softPay(method=$method)',
+    );
+  }
+
+  Future<ResponseData> _prestationPaydunyaSoftPay({
+    required String token,
+    required String prestationId,
+    required String invoiceToken,
+    required String prenom,
+    required String nom,
+    required String telephone,
+    String? email,
+    required String endpointSegment,
+    String? softpayMethod,
+    required String logName,
+  }) async {
+    try {
+      final hasInternet = await _checkInternetConnection();
+      if (!hasInternet) {
+        return ResponseData(
+          success: false,
+          message:
+              "Aucune connexion internet. Veuillez vérifier votre connexion et réessayer.",
+          data: null,
+          status: 0,
+          emailNotVerified: false,
+        );
+      }
+      final path =
+          '/prestations/$prestationId/paiement/paydunya/$endpointSegment';
+      final body = <String, dynamic>{
+        'invoiceToken': invoiceToken.trim(),
+        'prenom': prenom,
+        'nom': nom,
+        'telephone': telephone,
+        if (email != null && email.trim().isNotEmpty) 'email': email.trim(),
+        if (softpayMethod != null) 'method': softpayMethod,
+      };
+      _paiementLog(
+        '$logName → POST $path '
+        'invoiceToken=${_maskInvoiceToken(invoiceToken)} '
+        'tel=${_maskPhoneForLog(telephone)}',
+      );
+      final response = await dio.post(
+        path,
+        data: body,
+        options: Options(
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': 'Bearer $token',
+          },
+          validateStatus: (status) => status != null && status < 500,
+        ),
+      );
+      final raw = response.data;
+      final data = raw is Map && raw['data'] != null
+          ? raw['data']
+          : raw is Map
+              ? raw
+              : null;
+      final ok = response.statusCode == 200 || response.statusCode == 201;
+      String? softMsg;
+      bool? hasUrl;
+      if (data is Map && data['softPay'] is Map) {
+        final sp = data['softPay'] as Map;
+        softMsg = sp['message']?.toString();
+        final u = sp['url']?.toString();
+        final ou = sp['other_url'];
+        hasUrl = (u != null && u.isNotEmpty) ||
+            (ou is Map &&
+                ((ou['om_url']?.toString().isNotEmpty == true) ||
+                    (ou['maxit_url']?.toString().isNotEmpty == true)));
+      }
+      final msgShort = softMsg == null
+          ? ''
+          : (softMsg.length > 100
+              ? '${softMsg.substring(0, 100)}…'
+              : softMsg);
+      final urlPart = hasUrl == null ? '' : ' hasPayUrl=$hasUrl';
+      _paiementLog(
+        '$logName ← status=${response.statusCode} success=$ok'
+        '${msgShort.isEmpty ? '' : ' message=$msgShort'}'
+        '$urlPart',
+      );
+      return ResponseData.fromJson({
+        'success': ok,
+        'data': data,
+        'message': raw is Map ? (raw['message'] ?? '') : '',
+        'status': response.statusCode,
+        'emailNotVerified': false,
+      });
+    } on DioException catch (e) {
+      if (e.response != null) {
+        _paiementLog(
+          '$logName ✗ Dio status=${e.response!.statusCode} '
+          '${e.response?.data is Map ? 'message=${e.response!.data['message']}' : ''}',
+        );
+        return ResponseData.fromJson({
+          'success': false,
+          'data': null,
+          'status': e.response!.statusCode,
+          'message': e.response?.data is Map
+              ? (e.response!.data['message'] ?? 'Erreur serveur')
+              : 'Erreur serveur',
+          'emailNotVerified': false,
+        });
+      }
+      _paiementLog('$logName ✗ réseau sans réponse');
+      return ResponseData.fromJson({
+        'success': false,
+        'data': null,
+        'status': 500,
+        'message': 'Erreur réseau',
+        'emailNotVerified': false,
+      });
+    } catch (e) {
+      _paiementLog('$logName ✗ exception $e');
+      return ResponseData.fromJson({
+        'success': false,
+        'data': null,
+        'status': 500,
+        'message': 'Erreur inconnue',
+        'emailNotVerified': false,
+      });
+    }
+  }
+
+  /// Prépare un paiement PayDunya pour une prestation terminée. POST …/paiement/paydunya/init
+  Future<ResponseData> initPaydunyaPaiement(
+    String token,
+    String prestationId,
+  ) async {
+    try {
+      final hasInternet = await _checkInternetConnection();
+      if (!hasInternet) {
+        return ResponseData(
+          success: false,
+          message:
+              "Aucune connexion internet. Veuillez vérifier votre connexion et réessayer.",
+          data: null,
+          status: 0,
+          emailNotVerified: false,
+        );
+      }
+      _paiementLog(
+        'init → POST /prestations/$prestationId/paiement/paydunya/init',
+      );
+      final response = await dio.post(
+        '/prestations/$prestationId/paiement/paydunya/init',
+        options: Options(
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': 'Bearer $token',
+          },
+          validateStatus: (status) => status != null && status < 500,
+        ),
+      );
+      final raw = response.data;
+      final data = raw is Map && raw['data'] != null
+          ? raw['data']
+          : raw is Map
+              ? raw
+              : null;
+      final ok = response.statusCode == 200 || response.statusCode == 201;
+      num? amountFcfa;
+      if (data is Map && data['amountFcfa'] != null) {
+        amountFcfa = num.tryParse(data['amountFcfa'].toString());
+      }
+      final invTok = data is Map
+          ? data['invoiceToken']?.toString()
+          : null;
+      final hasCheckout =
+          data is Map && data['checkoutUrl']?.toString().isNotEmpty == true;
+      _paiementLog(
+        'init ← status=${response.statusCode} success=$ok '
+        'amountFcfa=${amountFcfa ?? '?'} '
+        'invoiceToken=${_maskInvoiceToken(invTok)} hasCheckoutUrl=$hasCheckout',
+      );
+      return ResponseData.fromJson({
+        'success': ok,
+        'data': data,
+        'message': raw is Map ? (raw['message'] ?? '') : '',
+        'status': response.statusCode,
+        'emailNotVerified': false,
+      });
+    } on DioException catch (e) {
+      if (e.response != null) {
+        _paiementLog(
+          'init ✗ Dio status=${e.response!.statusCode} '
+          '${e.response?.data is Map ? 'message=${e.response!.data['message']}' : ''}',
+        );
+        return ResponseData.fromJson({
+          'success': false,
+          'data': null,
+          'status': e.response!.statusCode,
+          'message': e.response?.data is Map
+              ? (e.response!.data['message'] ?? 'Erreur serveur')
+              : 'Erreur serveur',
+          'emailNotVerified': false,
+        });
+      }
+      _paiementLog('init ✗ réseau sans réponse');
+      return ResponseData.fromJson({
+        'success': false,
+        'data': null,
+        'status': 500,
+        'message': 'Erreur réseau',
+        'emailNotVerified': false,
+      });
+    } catch (e) {
+      _paiementLog('init ✗ exception $e');
       return ResponseData.fromJson({
         'success': false,
         'data': null,

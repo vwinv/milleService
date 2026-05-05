@@ -8,10 +8,8 @@ import 'package:milleservices/models/user.dart';
 import 'package:milleservices/providers/settings_provider.dart';
 import 'package:milleservices/providers/userProvider.dart';
 import 'package:milleservices/screens/authentification/login.dart';
-import 'package:milleservices/screens/prestataire/home_abonnement.dart';
-import 'package:milleservices/screens/settings.dart';
 import 'package:milleservices/services/pick_file_name.dart';
-import 'package:milleservices/services/prestataire_home_resolver.dart';
+import 'package:milleservices/services/home_resolver.dart';
 import 'package:milleservices/services/sizeConfig.dart';
 import 'package:milleservices/services/utilities.dart';
 import 'package:milleservices/widgets/address_autocomplete_field.dart';
@@ -71,6 +69,9 @@ class _SignUpState extends State<SignUp> with TickerProviderStateMixin {
   PlatformFile? cniVersoFile;
   PlatformFile? casierJudiciaireFile;
   PlatformFile? certificatBonneMoeursFile;
+
+  bool _signUpInProgress = false;
+
   @override
   void initState() {
     super.initState();
@@ -107,6 +108,7 @@ class _SignUpState extends State<SignUp> with TickerProviderStateMixin {
 
   @override
   Widget build(BuildContext context) {
+    SizeConfig().init(context);
     final bottomInset = MediaQuery.of(context).viewInsets.bottom;
     return Scaffold(
       // Laisse le contenu remonter quand le clavier s'affiche
@@ -115,11 +117,16 @@ class _SignUpState extends State<SignUp> with TickerProviderStateMixin {
       body: Stack(
         children: [
           Image.asset("${Utilities().imagePath}ouvrier.jpeg"),
-          SizedBox(
-            width: SizeConfig.screenWidth,
-            height: SizeConfig.screenHeight,
-            child: Column(
-              children: [
+          SafeArea(
+            child: AnimatedPadding(
+              duration: const Duration(milliseconds: 200),
+              curve: Curves.easeOut,
+              padding: EdgeInsets.only(bottom: bottomInset),
+              child: SizedBox(
+                width: SizeConfig.screenWidth,
+                height: SizeConfig.screenHeight,
+                child: Column(
+                  children: [
                 Padding(
                   padding: EdgeInsets.only(
                     top: SizeConfig.blockSizeVertical * 15,
@@ -249,16 +256,18 @@ class _SignUpState extends State<SignUp> with TickerProviderStateMixin {
                     ],
                   ),
                 ),
-                Expanded(
-                  child: TabBarView(
-                    controller: tabController,
-                    children: [
-                      _buildForm("particulier"),
-                      _buildForm("prestataire"),
-                    ],
-                  ),
+                    Expanded(
+                      child: TabBarView(
+                        controller: tabController,
+                        children: [
+                          _buildForm("particulier"),
+                          _buildForm("prestataire"),
+                        ],
+                      ),
+                    ),
+                  ],
                 ),
-              ],
+              ),
             ),
           ),
         ],
@@ -272,6 +281,10 @@ class _SignUpState extends State<SignUp> with TickerProviderStateMixin {
     final prestatairesProvider = Provider.of<PrestatairesProvider>(context);
 
     Future<void> handleSignUp() async {
+      if (_signUpInProgress) return;
+      _signUpInProgress = true;
+      userProvider.setLoading(true);
+      try {
       print("handle sign  ");
       // final formKey = type == "particulier"
       //     ? formParticulierKey
@@ -378,45 +391,24 @@ class _SignUpState extends State<SignUp> with TickerProviderStateMixin {
         serviceIds: type == "prestataire"
             ? _selectedServiceIdsPrestataire.toList()
             : null,
+        manageLoading: false,
       );
       print("res: ${res.toString()}");
       if (res.success == true) {
         if (mounted) {
           Utilities().showMesage(context, 'success', "signup_success".tr());
           // Navigation après inscription selon le type d'utilisateur
-          if (userProvider.user!.role.toLowerCase() == "prestataire") {
-            /*  // Prestataire : si pas encore d'abonnement -> écran d'abonnement,
-            // sinon passer par l'écran de choix de langue (Settings).
-            Navigator.of(context).pushReplacement(
-              MaterialPageRoute<void>(
-                builder: (_) => userProvider.abonnement == null
-                    ? const HomeAbonnement()
-                    : const Settings(),
-              ),
-            ); */
 
-            Navigator.of(context).pushReplacement(
-              MaterialPageRoute<void>(
-                builder: (_) {
-                  userProvider.refreshVerificationStatus();
-                  return resolvePrestataireHome(
-                    statutVerificationRaw:
-                        userProvider.user?.statutVerification
-                            ?.toString()
-                            .toUpperCase() ??
-                        '',
-                    settings: settings,
-                    userProvider: userProvider,
-                  );
-                },
-              ),
-            );
-          } else {
-            // Particulier : rediriger vers l'écran de choix de langue.
-            Navigator.of(context).pushReplacement(
-              MaterialPageRoute<void>(builder: (_) => const Settings()),
-            );
-          }
+          Navigator.of(context).pushReplacement(
+            MaterialPageRoute<void>(
+              builder: (_) {
+                return resolveHome(
+                  settings: settings,
+                  userProvider: userProvider,
+                );
+              },
+            ),
+          );
         }
       } else {
         if (mounted) {
@@ -431,6 +423,10 @@ class _SignUpState extends State<SignUp> with TickerProviderStateMixin {
             }
           });
         }
+      }
+      } finally {
+        _signUpInProgress = false;
+        userProvider.setLoading(false);
       }
     }
 
@@ -921,7 +917,7 @@ class _SignUpState extends State<SignUp> with TickerProviderStateMixin {
                 horizontal: SizeConfig.blockSizeHorizontal * 10,
               ),
               child: CustomButton(
-                onTap: handleSignUp,
+                onTap: userProvider.isLoading ? null : handleSignUp,
                 title: Center(
                   child: userProvider.isLoading
                       ? SizedBox(

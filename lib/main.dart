@@ -2,6 +2,7 @@ import 'package:easy_localization/easy_localization.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart';
 import 'package:flutter_foreground_task/flutter_foreground_task.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:milleservices/providers/userProvider.dart';
@@ -17,10 +18,18 @@ import 'package:milleservices/services/fcm_background_handler.dart';
 import 'package:milleservices/services/fcm_debug_log.dart';
 import 'package:milleservices/services/navigation.dart';
 import 'package:milleservices/services/notificationService.dart';
-import 'package:milleservices/services/prestataire_home_resolver.dart';
+import 'package:milleservices/services/home_resolver.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
+  // Force-disable visual debug overlays (baselines/paint guides) in app runtime.
+  assert(() {
+    debugPaintBaselinesEnabled = false;
+    debugPaintSizeEnabled = false;
+    debugPaintPointersEnabled = false;
+    debugPaintLayerBordersEnabled = false;
+    return true;
+  }());
   FlutterForegroundTask.initCommunicationPort();
   await EasyLocalization.ensureInitialized();
 
@@ -152,7 +161,6 @@ class MyHomePage extends StatefulWidget {
 
 class _MyHomePageState extends State<MyHomePage> {
   bool _notificationsInitialized = false;
-  Future<Map<String, dynamic>?>? _prestataireVerificationFuture;
 
   @override
   Widget build(BuildContext context) {
@@ -184,38 +192,11 @@ class _MyHomePageState extends State<MyHomePage> {
               child: const HomeParticulier(),
             );
           }
-          // Prestataire :
-          // Avant de décider de l'écran, on récupère toujours
-          // le statut de vérification depuis le backend.
-          _prestataireVerificationFuture ??= userProvider
-              .refreshVerificationStatus();
-          return FutureBuilder<Map<String, dynamic>?>(
-            future: _prestataireVerificationFuture,
-            builder: (context, snapshot) {
-              if (snapshot.connectionState == ConnectionState.waiting) {
-                return const Scaffold(
-                  body: Center(child: CircularProgressIndicator()),
-                );
-              }
-
-              final statutVerif =
-                  userProvider.user!.statutVerification
-                      ?.toString()
-                      .toUpperCase() ??
-                  '';
-
-              // - si documents en attente de validation -> écran d'attente
-              // - si un document a été refusé -> écran de resoumission
-              // - sinon, si aucun abonnement -> HomeAbonnement
-              // - sinon, si langue non définie -> Settings
-              // - sinon -> HomePrestataire
-
-              return resolvePrestataireHome(
-                statutVerificationRaw: statutVerif,
-                settings: settings,
-                userProvider: userProvider,
-              );
-            },
+          // Prestataire : [resolveHome] attend d'abord refreshVerificationStatus
+          // puis choisit l'écran (documents / validation / abonnement / home).
+          return resolveHome(
+            settings: settings,
+            userProvider: userProvider,
           );
         }
         return const Welcome();

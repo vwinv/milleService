@@ -24,13 +24,20 @@ class Abonnement {
   // ignore: missing_return
 
   factory Abonnement.fromJson(dynamic json) {
+    final m =
+        json is Map ? Map<String, dynamic>.from(json) : <String, dynamic>{};
+    final offre = m['offre'];
+    dynamic offreId = m['offreId'];
+    if ((offreId == null || '$offreId'.isEmpty) && offre is Map) {
+      offreId = offre['id'];
+    }
     return Abonnement(
-      id: json["id"],
-      prestataireId: json["prestataireId"],
-      offreId: json["offreId"],
-      dateDebut: json["dateDebut"],
-      dateFin: json["dateFin"],
-      statut: json["statut"],
+      id: m['id'],
+      prestataireId: m['prestataireId'],
+      offreId: offreId,
+      dateDebut: m['dateDebut'],
+      dateFin: m['dateFin'],
+      statut: m['statut'],
     );
   }
 

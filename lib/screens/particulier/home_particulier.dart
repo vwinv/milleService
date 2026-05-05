@@ -2,17 +2,19 @@ import 'dart:async';
 
 import 'package:easy_localization/easy_localization.dart';
 import 'package:flutter/material.dart';
-import 'package:flutter_map/flutter_map.dart';
-import 'package:latlong2/latlong.dart';
+import 'package:google_maps_flutter/google_maps_flutter.dart';
 import 'package:milleservices/screens/particulier/profil_particulier.dart';
 import 'package:provider/provider.dart';
 import 'package:milleservices/models/prestataire.dart';
 import 'package:milleservices/providers/home_content_provider.dart';
 import 'package:milleservices/providers/prestatairesProvider.dart';
 import 'package:milleservices/providers/userProvider.dart';
+import 'package:milleservices/screens/particulier/details_prestataire.dart';
 import 'package:milleservices/screens/particulier/pages/demander_service_page.dart';
 import 'package:milleservices/screens/particulier/pages/favoris_content.dart';
+import 'package:milleservices/controllers/geocodingController.dart';
 import 'package:milleservices/services/device_location_service.dart';
+import 'package:milleservices/services/map_marker_badge.dart';
 import 'package:milleservices/services/sizeConfig.dart';
 import 'package:milleservices/services/utilities.dart';
 import 'package:milleservices/services/app_map.dart';
@@ -29,6 +31,44 @@ class _HomeParticulierState extends State<HomeParticulier> {
   bool _hasNewNotifications = true;
   bool _bootstrapStarted = false;
   LatLng? _deviceLatLng;
+  final GlobalKey<_HomeMapState> _homeMapKey = GlobalKey<_HomeMapState>();
+
+  Future<LatLng?> _resolveLocationForFavoris(UserProvider userProvider) async {
+    // En mode non temps reel, on ignore les coords profile (souvent maj par GPS)
+    // et on passe uniquement par l'adresse enregistree.
+    if (!Utilities.useRealtimeLocation) {
+      final adresse = userProvider.user?.adresse?.toString().trim() ?? '';
+      if (adresse.length >= 3) {
+        final geo = await GeocodingController().geocode(adresse);
+        if (geo != null) {
+          return LatLng(geo.lat, geo.lng);
+        }
+      }
+      return null;
+    }
+
+    if (Utilities.useRealtimeLocation) {
+      final device = await DeviceLocationService.getCurrentLatLngOrNull();
+      if (device != null) return device;
+    }
+
+    final u = userProvider.user;
+    if (u?.latitude != null && u?.longitude != null) {
+      return LatLng(
+        (u!.latitude as num).toDouble(),
+        (u.longitude as num).toDouble(),
+      );
+    }
+
+    final adresse = u?.adresse?.toString().trim() ?? '';
+    if (adresse.length >= 3) {
+      final geo = await GeocodingController().geocode(adresse);
+      if (geo != null) {
+        return LatLng(geo.lat, geo.lng);
+      }
+    }
+    return null;
+  }
 
   @override
   void didChangeDependencies() {
@@ -45,27 +85,22 @@ class _HomeParticulierState extends State<HomeParticulier> {
   Future<void> _bootstrapLocationAndFavoris() async {
     if (!mounted) return;
     final userProvider = context.read<UserProvider>();
-    final device = await DeviceLocationService.getCurrentLatLngOrNull();
+    final resolved = await _resolveLocationForFavoris(userProvider);
     if (!mounted) return;
-    setState(() => _deviceLatLng = device);
-
-    final u = userProvider.user;
-    double? lat = device?.latitude;
-    double? lng = device?.longitude;
-    if (lat == null && u?.latitude != null && u?.longitude != null) {
-      lat = (u!.latitude as num).toDouble();
-      lng = (u.longitude as num).toDouble();
-    }
+    setState(() => _deviceLatLng = resolved);
 
     await context.read<PrestatairesProvider>().loadFavoris(
-          lat: lat,
-          lng: lng,
-          userProvider: userProvider,
-        );
+      lat: resolved?.latitude,
+      lng: resolved?.longitude,
+      userProvider: userProvider,
+    );
 
-    if (device != null && mounted) {
+    if (Utilities.useRealtimeLocation && resolved != null && mounted) {
       unawaited(
-        userProvider.pushMyDeviceLocation(device.latitude, device.longitude),
+        userProvider.pushMyDeviceLocation(
+          resolved.latitude,
+          resolved.longitude,
+        ),
       );
     }
   }
@@ -74,19 +109,22 @@ class _HomeParticulierState extends State<HomeParticulier> {
   Future<void> _refreshDeviceLocationOnly() async {
     if (!mounted) return;
     final userProvider = context.read<UserProvider>();
-    final device = await DeviceLocationService.getCurrentLatLngOrNull();
+    final resolved = await _resolveLocationForFavoris(userProvider);
     if (!mounted) return;
-    setState(() => _deviceLatLng = device);
-    if (device != null) {
+    setState(() => _deviceLatLng = resolved);
+    if (Utilities.useRealtimeLocation && resolved != null) {
       unawaited(
-        userProvider.pushMyDeviceLocation(device.latitude, device.longitude),
+        userProvider.pushMyDeviceLocation(
+          resolved.latitude,
+          resolved.longitude,
+        ),
       );
-      await context.read<PrestatairesProvider>().loadFavoris(
-            lat: device.latitude,
-            lng: device.longitude,
-            userProvider: userProvider,
-          );
     }
+    await context.read<PrestatairesProvider>().loadFavoris(
+      lat: resolved?.latitude,
+      lng: resolved?.longitude,
+      userProvider: userProvider,
+    );
   }
 
   @override
@@ -112,7 +150,9 @@ class _HomeParticulierState extends State<HomeParticulier> {
             SizedBox(width: SizeConfig.blockSizeHorizontal * 2),
             Expanded(
               child: Text(
-                prenom.isNotEmpty ? 'details_welcome_name'.tr(namedArgs: {'name': prenom}) : 'details_welcome'.tr(),
+                prenom.isNotEmpty
+                    ? 'details_welcome_name'.tr(namedArgs: {'name': prenom})
+                    : 'details_welcome'.tr(),
                 style: TextStyle(
                   color: Colors.black,
                   fontSize: SizeConfig.fontSize(
@@ -181,6 +221,7 @@ class _HomeParticulierState extends State<HomeParticulier> {
               fit: StackFit.expand,
               children: [
                 _HomeMap(
+                  key: _homeMapKey,
                   user: user,
                   favoris: prestatairesProvider.favoris,
                   deviceLatLng: _deviceLatLng,
@@ -200,6 +241,7 @@ class _HomeParticulierState extends State<HomeParticulier> {
                         color: Utilities().colorBlue,
                       ),
                       onPressed: () {
+                        _homeMapKey.currentState?.recenterOnCurrentUser();
                         unawaited(_refreshDeviceLocationOnly());
                       },
                     ),
@@ -240,6 +282,7 @@ class _HomeMap extends StatefulWidget {
   final LatLng? deviceLatLng;
 
   const _HomeMap({
+    super.key,
     required this.user,
     required this.favoris,
     required this.deviceLatLng,
@@ -250,10 +293,26 @@ class _HomeMap extends StatefulWidget {
 }
 
 class _HomeMapState extends State<_HomeMap> {
-  final MapController _mapController = MapController();
+  GoogleMapController? _mapController;
   static const double _zoom = 15;
+  final Map<String, BitmapDescriptor> _markerIcons = {};
+  final Set<String> _markerIconsLoading = <String>{};
+  final Map<String, LatLng?> _addressGeocodedPositions = {};
+  final Set<String> _addressGeocodingInFlight = <String>{};
 
   LatLng _youPoint() {
+    if (!Utilities.useRealtimeLocation) {
+      final u = widget.user;
+      if (u != null && u.adresse != null) {
+        final key = 'user_addr';
+        _ensureAddressPosition(
+          key: key,
+          address: u.adresse.toString(),
+        );
+        final byAddress = _addressGeocodedPositions[key];
+        if (byAddress != null) return byAddress;
+      }
+    }
     if (widget.deviceLatLng != null) return widget.deviceLatLng!;
     final u = widget.user;
     if (u != null && u.latitude != null && u.longitude != null) {
@@ -268,7 +327,8 @@ class _HomeMapState extends State<_HomeMap> {
   @override
   void didUpdateWidget(covariant _HomeMap oldWidget) {
     super.didUpdateWidget(oldWidget);
-    final oldPt = oldWidget.deviceLatLng ??
+    final oldPt =
+        oldWidget.deviceLatLng ??
         (oldWidget.user != null &&
                 oldWidget.user.latitude != null &&
                 oldWidget.user.longitude != null
@@ -277,7 +337,8 @@ class _HomeMapState extends State<_HomeMap> {
                 (oldWidget.user.longitude as num).toDouble(),
               )
             : null);
-    final newPt = widget.deviceLatLng ??
+    final newPt =
+        widget.deviceLatLng ??
         (widget.user != null &&
                 widget.user.latitude != null &&
                 widget.user.longitude != null
@@ -286,107 +347,160 @@ class _HomeMapState extends State<_HomeMap> {
                 (widget.user.longitude as num).toDouble(),
               )
             : null);
-    if (oldPt?.latitude != newPt?.latitude || oldPt?.longitude != newPt?.longitude) {
+    if (oldPt?.latitude != newPt?.latitude ||
+        oldPt?.longitude != newPt?.longitude) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
-        if (mounted) _mapController.move(_youPoint(), _zoom);
+        if (mounted) {
+          _mapController?.animateCamera(
+            CameraUpdate.newLatLngZoom(_youPoint(), _zoom),
+          );
+        }
       });
     }
   }
 
   @override
   void dispose() {
-    _mapController.dispose();
+    _mapController?.dispose();
     super.dispose();
+  }
+
+  void recenterOnCurrentUser() {
+    final target = _youPoint();
+    _mapController?.animateCamera(CameraUpdate.newLatLngZoom(target, _zoom));
+  }
+
+  void _loadMarkerIcon({
+    required String key,
+    required String label,
+    required Color border,
+    required Color fill,
+    required Color text,
+  }) {
+    if (_markerIcons.containsKey(key) || _markerIconsLoading.contains(key))
+      return;
+    _markerIconsLoading.add(key);
+    unawaited(
+      MapMarkerBadge.create(
+            label: label,
+            borderColor: border,
+            fillColor: fill,
+            textColor: text,
+          )
+          .then((icon) {
+            if (!mounted) return;
+            setState(() {
+              _markerIcons[key] = icon;
+            });
+          })
+          .whenComplete(() {
+            _markerIconsLoading.remove(key);
+          }),
+    );
+  }
+
+  void _ensureAddressPosition({
+    required String key,
+    required String address,
+  }) {
+    if (_addressGeocodedPositions.containsKey(key)) return;
+    if (_addressGeocodingInFlight.contains(key)) return;
+    final trimmed = address.trim();
+    if (trimmed.length < 3) {
+      _addressGeocodedPositions[key] = null;
+      return;
+    }
+    _addressGeocodingInFlight.add(key);
+    unawaited(
+      GeocodingController()
+          .geocode(trimmed)
+          .then((geo) {
+            if (!mounted) return;
+            setState(() {
+              _addressGeocodedPositions[key] = geo != null
+                  ? LatLng(geo.lat, geo.lng)
+                  : null;
+            });
+          })
+          .whenComplete(() {
+            _addressGeocodingInFlight.remove(key);
+          }),
+    );
   }
 
   @override
   Widget build(BuildContext context) {
     final center = _youPoint();
 
-    final markers = <Marker>[];
+    final markers = <Marker>{};
 
     final you = _youPoint();
     if (widget.user != null &&
         (widget.deviceLatLng != null ||
             (widget.user.latitude != null && widget.user.longitude != null))) {
+      const youKey = 'you';
+      _loadMarkerIcon(
+        key: youKey,
+        label: 'home_you'.tr(),
+        border: Utilities().colorBlue,
+        fill: Utilities().colorBlueLight,
+        text: Utilities().colorBlue,
+      );
       markers.add(
         Marker(
-          point: you,
-          width: SizeConfig.blockSizeHorizontal * 50,
-          height: SizeConfig.blockSizeVertical * 10,
-          child: Column(
-            children: [
-              Container(
-                padding: EdgeInsets.symmetric(
-                  horizontal: SizeConfig.blockSizeHorizontal * 3,
-                  vertical: SizeConfig.blockSizeVertical * 0.5,
-                ),
-                decoration: BoxDecoration(
-                  color: Utilities().colorBlueLight,
-                  border: Border.all(color: Utilities().colorBlue, width: 2),
-                  borderRadius: BorderRadius.circular(100),
-                ),
-                child: Text(
-                  'home_you'.tr(),
-                  style: TextStyle(
-                    color: Utilities().colorBlue,
-                    fontSize: 12,
-                    fontWeight: FontWeight.w600,
-                  ),
-                  overflow: TextOverflow.ellipsis,
-                  maxLines: 1,
-                ),
-              ),
-              Icon(
-                Icons.location_on,
-                color: Utilities().colorBlue,
-                size: SizeConfig.fontSize(SizeConfig.blockSizeHorizontal * 7),
-              ),
-            ],
-          ),
+          markerId: const MarkerId(youKey),
+          position: you,
+          icon:
+              _markerIcons[youKey] ??
+              BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueAzure),
+          infoWindow: InfoWindow(title: 'home_you'.tr()),
         ),
       );
     }
 
     for (final p in widget.favoris) {
-      if (p.latitude != null && p.longitude != null) {
+      LatLng? point;
+      if (Utilities.useRealtimeLocation) {
+        if (p.latitude != null && p.longitude != null) {
+          point = LatLng(p.latitude!, p.longitude!);
+        }
+      } else {
+        final key = 'fav_addr_${p.id}';
+        _ensureAddressPosition(
+          key: key,
+          address: p.adresse ?? '',
+        );
+        point = _addressGeocodedPositions[key];
+      }
+
+      if (point != null) {
+        final markerKey = 'fav_${p.id}';
+        _loadMarkerIcon(
+          key: markerKey,
+          label: p.nom,
+          border: Utilities().colorBlue,
+          fill: Utilities().colorBlueLight,
+          text: Utilities().colorBlue,
+        );
         markers.add(
           Marker(
-            point: LatLng(p.latitude!, p.longitude!),
-            width: SizeConfig.blockSizeHorizontal * 50,
-            height: SizeConfig.blockSizeVertical * 10,
-            child: Column(
-              children: [
-                Container(
-                  padding: EdgeInsets.symmetric(
-                    horizontal: SizeConfig.blockSizeHorizontal * 3,
-                    vertical: SizeConfig.blockSizeVertical * 0.5,
-                  ),
-                  decoration: BoxDecoration(
-                    color: Utilities().colorBlueLight,
-                    border:
-                        Border.all(color: Utilities().colorBlue, width: 2),
-                    borderRadius: BorderRadius.circular(100),
-                  ),
-                  child: Text(
-                    p.nom,
-                    style: TextStyle(
-                      color: Utilities().colorBlue,
-                      fontSize: 12,
-                      fontWeight: FontWeight.w600,
-                    ),
-                    overflow: TextOverflow.ellipsis,
-                    maxLines: 1,
-                  ),
+            markerId: MarkerId(markerKey),
+            position: point,
+            icon:
+                _markerIcons[markerKey] ??
+                BitmapDescriptor.defaultMarkerWithHue(
+                  BitmapDescriptor.hueAzure,
                 ),
-                Icon(
-                  Icons.location_on,
-                  color: Utilities().colorBlue,
-                  size: SizeConfig.fontSize(
-                    SizeConfig.blockSizeHorizontal * 7,
+            infoWindow: InfoWindow(
+              title: p.nom,
+              onTap: () {
+                Navigator.push(
+                  context,
+                  MaterialPageRoute<void>(
+                    builder: (_) => DetailsPrestataire(prestataire: p),
                   ),
-                ),
-              ],
+                );
+              },
             ),
           ),
         );
@@ -394,10 +508,10 @@ class _HomeMapState extends State<_HomeMap> {
     }
 
     return AppMap(
-      mapController: _mapController,
       center: center,
       zoom: _zoom,
       markers: markers,
+      onMapCreated: (controller) => _mapController = controller,
     );
   }
 }

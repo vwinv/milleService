@@ -1,6 +1,9 @@
 import 'package:flutter/foundation.dart';
+import 'dart:math' as math;
+import 'package:milleservices/controllers/geocodingController.dart';
 import 'package:milleservices/controllers/prestatairesController.dart';
 import 'package:milleservices/services/device_location_service.dart';
+import 'package:milleservices/services/utilities.dart';
 import 'package:milleservices/models/avis_client.dart';
 import 'package:milleservices/models/prestataire.dart';
 import 'package:milleservices/models/prestataire_photo.dart';
@@ -225,54 +228,84 @@ class PrestatairesProvider extends ChangeNotifier {
     _error = null;
     _favorisListeProximite = false;
     notifyListeners();
-
-    var result = await _controller.getFavoris(
-      lat: lat,
-      lng: lng,
-      token: userProvider.token,
-    );
-
-    if (result.status == 401) {
-      await userProvider.refreshToken();
-      result = await _controller.getFavoris(
-        lat: lat,
-        lng: lng,
+    // Quand le mode temps reel est desactive, on ignore toute coordonnee GPS entrante.
+    double? gpsLat = Utilities.useRealtimeLocation ? lat : null;
+    double? gpsLng = Utilities.useRealtimeLocation ? lng : null;
+    if (Utilities.useRealtimeLocation && (gpsLat == null || gpsLng == null)) {
+      final device = await DeviceLocationService.getCurrentLatLngOrNull();
+      if (device != null) {
+        gpsLat = device.latitude;
+        gpsLng = device.longitude;
+      }
+    }
+    final user = userProvider.user;
+    double? baseLat = gpsLat ?? _toDoubleOrNull(user?.latitude);
+    double? baseLng = gpsLng ?? _toDoubleOrNull(user?.longitude);
+    if (!Utilities.useRealtimeLocation) {
+      final byAddress = await _resolveProfileAddressLatLng(userProvider);
+      if (byAddress != null) {
+        baseLat = byAddress.lat;
+        baseLng = byAddress.lng;
+      }
+    }
+    try {
+      var result = await _controller.getFavoris(
+        lat: gpsLat,
+        lng: gpsLng,
         token: userProvider.token,
       );
-    }
-    if (result.success == true && result.data != null) {
-      final raw = result.data;
-      List<dynamic> list;
-      if (raw is List) {
-        list = raw;
-        _favorisListeProximite = false;
-      } else if (raw is Map) {
-        final m = Map<String, dynamic>.from(raw);
-        final nested = m['data'];
-        if (nested is Map) {
-          m.addAll(Map<String, dynamic>.from(nested));
-        }
-        final arr = m['prestataires'] ?? m['items'];
-        list = arr is List<dynamic> ? arr : <dynamic>[];
-        _favorisListeProximite = m['listeProximite'] == true;
-      } else {
-        list = <dynamic>[];
+
+      if (result.status == 401) {
+        await userProvider.refreshToken();
+        result = await _controller.getFavoris(
+          lat: gpsLat,
+          lng: gpsLng,
+          token: userProvider.token,
+        );
       }
-      _favoris = list
-          .whereType<Map<String, dynamic>>()
-          .map(Prestataire.fromJson)
-          .toList();
-      _error = null;
-    } else {
+      if (result.success == true && result.data != null) {
+        final raw = result.data;
+        List<dynamic> list;
+        if (raw is List) {
+          list = raw;
+          _favorisListeProximite = false;
+        } else if (raw is Map) {
+          final m = Map<String, dynamic>.from(raw);
+          final nested = m['data'];
+          if (nested is Map) {
+            m.addAll(Map<String, dynamic>.from(nested));
+          }
+          final arr = m['prestataires'] ?? m['items'];
+          list = arr is List<dynamic> ? arr : <dynamic>[];
+          _favorisListeProximite = m['listeProximite'] == true;
+        } else {
+          list = <dynamic>[];
+        }
+        _favoris = list
+            .whereType<Map<String, dynamic>>()
+            .map(Prestataire.fromJson)
+            .map(
+              (p) =>
+                  _computeDistanceIfMissing(p, userLat: baseLat, userLng: baseLng),
+            )
+            .toList();
+        _error = null;
+      } else {
+        _favoris = [];
+        _favorisListeProximite = false;
+        final msg = result.message;
+        _error = msg != null && msg.toString().trim().isNotEmpty
+            ? msg.toString()
+            : 'Impossible de charger les favoris. Vérifiez votre connexion.';
+      }
+    } catch (_) {
       _favoris = [];
       _favorisListeProximite = false;
-      final msg = result.message;
-      _error = msg != null && msg.toString().trim().isNotEmpty
-          ? msg.toString()
-          : 'Impossible de charger les favoris. Vérifiez votre connexion.';
+      _error = 'Impossible de charger les favoris. Vérifiez votre connexion.';
+    } finally {
+      _isLoading = false;
+      notifyListeners();
     }
-    _isLoading = false;
-    notifyListeners();
   }
 
   /// Lance la recherche de prestataires (service, tarif, date si planifier).
@@ -290,15 +323,25 @@ class PrestatairesProvider extends ChangeNotifier {
 
     double? searchLat;
     double? searchLng;
-    final device = await DeviceLocationService.getCurrentLatLngOrNull();
-    if (device != null) {
-      searchLat = device.latitude;
-      searchLng = device.longitude;
-    } else {
+    if (Utilities.useRealtimeLocation) {
+      final device = await DeviceLocationService.getCurrentLatLngOrNull();
+      if (device != null) {
+        searchLat = device.latitude;
+        searchLng = device.longitude;
+      }
+    }
+    if (searchLat == null || searchLng == null) {
       final u = userProvider.user;
       if (u?.latitude != null && u?.longitude != null) {
         searchLat = (u!.latitude as num).toDouble();
         searchLng = (u.longitude as num).toDouble();
+      }
+    }
+    if (!Utilities.useRealtimeLocation) {
+      final byAddress = await _resolveProfileAddressLatLng(userProvider);
+      if (byAddress != null) {
+        searchLat = byAddress.lat;
+        searchLng = byAddress.lng;
       }
     }
 
@@ -328,12 +371,81 @@ class PrestatairesProvider extends ChangeNotifier {
 
     if (result.success == true && result.data != null) {
       final list = result.data as List<dynamic>;
-      _searchResults = list.map((e) => Prestataire.fromJson(e)).toList();
+      _searchResults = list
+          .map((e) => Prestataire.fromJson(e))
+          .map(
+            (p) => _computeDistanceIfMissing(
+              p,
+              userLat: searchLat,
+              userLng: searchLng,
+            ),
+          )
+          .toList();
     } else {
       _searchError = result.message;
     }
 
     _searchLoading = false;
     notifyListeners();
+  }
+
+  Prestataire _computeDistanceIfMissing(
+    Prestataire p, {
+    double? userLat,
+    double? userLng,
+  }) {
+    if (p.distanceMetres > 0) return p;
+    if (userLat == null || userLng == null) return p;
+    if (p.latitude == null || p.longitude == null) return p;
+    final meters = _haversineMeters(userLat, userLng, p.latitude!, p.longitude!);
+    if (meters <= 0) return p;
+    return Prestataire(
+      id: p.id,
+      nom: p.nom,
+      telephone: p.telephone,
+      bio: p.bio,
+      avatarUrl: p.avatarUrl,
+      adresse: p.adresse,
+      zoneIntervention: p.zoneIntervention,
+      statutVerification: p.statutVerification,
+      noteMoyenne: p.noteMoyenne,
+      noteSur: p.noteSur,
+      nbAvis: p.nbAvis,
+      distanceMetres: meters.round(),
+      latitude: p.latitude,
+      longitude: p.longitude,
+      services: p.services,
+    );
+  }
+
+  double _haversineMeters(double lat1, double lng1, double lat2, double lng2) {
+    const earthRadiusMeters = 6371000.0;
+    final dLat = (lat2 - lat1) * (math.pi / 180);
+    final dLng = (lng2 - lng1) * (math.pi / 180);
+    final lat1Rad = lat1 * (math.pi / 180);
+    final lat2Rad = lat2 * (math.pi / 180);
+    final a =
+        math.sin(dLat / 2) * math.sin(dLat / 2) +
+        math.cos(lat1Rad) *
+            math.cos(lat2Rad) *
+            math.sin(dLng / 2) *
+            math.sin(dLng / 2);
+    final c = 2 * math.atan2(math.sqrt(a), math.sqrt(1 - a));
+    return earthRadiusMeters * c;
+  }
+
+  double? _toDoubleOrNull(dynamic raw) {
+    if (raw == null) return null;
+    if (raw is num) return raw.toDouble();
+    if (raw is String) return double.tryParse(raw.trim());
+    return null;
+  }
+
+  Future<({double lat, double lng})?> _resolveProfileAddressLatLng(
+    UserProvider userProvider,
+  ) async {
+    final address = userProvider.user?.adresse?.toString().trim() ?? '';
+    if (address.length < 3) return null;
+    return GeocodingController().geocode(address);
   }
 }

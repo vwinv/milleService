@@ -4,7 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:milleservices/controllers/geocodingController.dart';
 import 'package:milleservices/services/sizeConfig.dart';
 
-/// Champ adresse avec autocomplétion via Photon (API gratuite).
+/// Champ adresse avec autocomplétion via backend (Google Places).
 class AddressAutocompleteField extends StatefulWidget {
   final TextEditingController controller;
   final String label;
@@ -108,7 +108,7 @@ class _AddressAutocompleteFieldState extends State<AddressAutocompleteField> {
       child: CompositedTransformFollower(
         link: _layerLink,
         showWhenUnlinked: false,
-        offset: Offset(0, widget.height),
+        offset: Offset(0, widget.height < 48 ? 48.0 : widget.height),
         child: Material(
           elevation: 4,
           color: Colors.white,
@@ -190,6 +190,7 @@ class _AddressAutocompleteFieldState extends State<AddressAutocompleteField> {
 
   @override
   Widget build(BuildContext context) {
+    final effectiveHeight = widget.height < 48 ? 48.0 : widget.height;
     return Padding(
       padding: EdgeInsets.symmetric(
         horizontal: SizeConfig.blockSizeHorizontal * 5,
@@ -205,7 +206,7 @@ class _AddressAutocompleteFieldState extends State<AddressAutocompleteField> {
           CompositedTransformTarget(
             link: _layerLink,
             child: Container(
-              height: widget.height,
+              height: effectiveHeight,
               width: widget.width,
               padding: EdgeInsets.only(
                 left: widget.label.isNotEmpty
@@ -230,6 +231,7 @@ class _AddressAutocompleteFieldState extends State<AddressAutocompleteField> {
                         hintText: widget.placeholder,
                         border: InputBorder.none,
                         hintStyle: widget.placeholderStyle,
+                        contentPadding: const EdgeInsets.symmetric(vertical: 12),
                       ),
                       validator: widget.validator,
                       onChanged: _onTextChanged,

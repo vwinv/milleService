@@ -62,14 +62,15 @@ class GeocodingController {
           .map((e) {
             if (e is! Map<String, dynamic>) return null;
             final displayName = e['displayName'] as String?;
+            final placeId = e['placeId'] as String?;
             final lat = e['lat'];
             final lng = e['lng'];
             if (displayName == null || displayName.isEmpty) return null;
-            if (lat == null || lng == null) return null;
             return AutocompleteSuggestion(
               displayName: displayName,
-              lat: (lat as num).toDouble(),
-              lng: (lng as num).toDouble(),
+              placeId: placeId,
+              lat: lat is num ? lat.toDouble() : null,
+              lng: lng is num ? lng.toDouble() : null,
             );
           })
           .whereType<AutocompleteSuggestion>()
@@ -78,16 +79,41 @@ class GeocodingController {
       return [];
     }
   }
+
+  /// Résout un placeId Google en coordonnées.
+  Future<({double lat, double lng})?> placeDetails(String placeId) async {
+    final id = placeId.trim();
+    if (id.isEmpty) return null;
+    try {
+      final response = await _dio.get<Map<String, dynamic>>(
+        '/geocoding/place-details',
+        queryParameters: {'placeId': id},
+      );
+      final raw = response.data;
+      if (raw == null) return null;
+      final data = raw['data'] as Map<String, dynamic>? ?? raw;
+      final found = data['found'] == true;
+      if (!found) return null;
+      final lat = data['lat'];
+      final lng = data['lng'];
+      if (lat is! num || lng is! num) return null;
+      return (lat: lat.toDouble(), lng: lng.toDouble());
+    } on DioException catch (_) {
+      return null;
+    }
+  }
 }
 
 class AutocompleteSuggestion {
   final String displayName;
-  final double lat;
-  final double lng;
+  final String? placeId;
+  final double? lat;
+  final double? lng;
 
   AutocompleteSuggestion({
     required this.displayName,
-    required this.lat,
-    required this.lng,
+    this.placeId,
+    this.lat,
+    this.lng,
   });
 }
