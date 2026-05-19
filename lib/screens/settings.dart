@@ -2,7 +2,7 @@ import 'package:easy_localization/easy_localization.dart';
 import 'package:flutter/material.dart';
 import 'package:milleservices/providers/userProvider.dart';
 import 'package:milleservices/services/app_locale.dart';
-import 'package:milleservices/services/home_resolver.dart';
+import 'package:milleservices/navigation/app_navigation.dart';
 import 'package:milleservices/services/sizeConfig.dart';
 import 'package:milleservices/services/utilities.dart';
 import 'package:milleservices/widgets/customButton.dart';
@@ -143,12 +143,6 @@ class _SettingsState extends State<Settings> {
     final userProvider = context.read<UserProvider>();
     await applyAppLanguage(context, settings, _selectedLanguage);
     if (!mounted) return;
-    Navigator.pushReplacement(
-      context,
-      MaterialPageRoute<void>(
-        builder: (_) =>
-            resolveHome(settings: settings, userProvider: userProvider),
-      ),
-    );
+    AppNavigation.goHome(context);
   }
 }

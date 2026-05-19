@@ -5,7 +5,7 @@ import 'package:milleservices/models/service_category.dart';
 import 'package:milleservices/providers/home_content_provider.dart';
 import 'package:milleservices/providers/prestatairesProvider.dart';
 import 'package:milleservices/providers/userProvider.dart';
-import 'package:milleservices/screens/particulier/list_prestataire.dart';
+import 'package:milleservices/navigation/app_navigation.dart';
 import 'package:milleservices/services/sizeConfig.dart';
 import 'package:milleservices/services/utilities.dart';
 import 'package:milleservices/widgets/address_autocomplete_field.dart';
@@ -162,12 +162,7 @@ class _DemanderServicePageState extends State<DemanderServicePage> {
                 CustomButton(
                   onTap: () {
                     _onRechercher();
-                    Navigator.push(
-                      context,
-                      MaterialPageRoute(
-                        builder: (context) => ListPrestataire(),
-                      ),
-                    );
+                    AppNavigation.pushParticulierSearch(context);
                   },
                   title: Center(
                     child: Text(

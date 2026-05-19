@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:milleservices/controllers/prestationsController.dart';
 import 'package:milleservices/models/prestation.dart';
 import 'package:milleservices/providers/userProvider.dart';
-import 'package:milleservices/screens/deroulement_prestation.dart';
+import 'package:milleservices/navigation/app_navigation.dart';
 import 'package:milleservices/services/sizeConfig.dart';
 import 'package:milleservices/services/utilities.dart';
 import 'package:milleservices/widgets/customButton.dart';
@@ -72,12 +72,7 @@ class _PrestataireConfirmPrestationState
       return;
     }
     final updated = Prestation.fromJson(data);
-    Navigator.pushReplacement(
-      context,
-      MaterialPageRoute(
-        builder: (context) => DeroulementPrestation(prestation: updated),
-      ),
-    );
+    AppNavigation.goPrestatairePrestation(context, updated);
   }
 
   Future<void> _refuser() async {
@@ -116,7 +111,7 @@ class _PrestataireConfirmPrestationState
       return;
     }
     if (!mounted) return;
-    Navigator.pop(context, true); // true = liste à rafraîchir
+    AppNavigation.pop(context, true);
   }
 
   @override
@@ -138,7 +133,7 @@ class _PrestataireConfirmPrestationState
         leading: IconButton(
           icon: const Icon(Icons.arrow_back_ios),
           color: Colors.black,
-          onPressed: () => Navigator.pop(context),
+          onPressed: () => AppNavigation.pop(context),
         ),
         title: Text(
           clientNom,

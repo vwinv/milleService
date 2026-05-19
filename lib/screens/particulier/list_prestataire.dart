@@ -1,6 +1,6 @@
 import 'package:easy_localization/easy_localization.dart';
 import 'package:flutter/material.dart';
-import 'package:milleservices/screens/particulier/details_prestataire.dart';
+import 'package:milleservices/navigation/app_navigation.dart';
 import 'package:provider/provider.dart';
 import 'package:milleservices/providers/prestatairesProvider.dart';
 import 'package:milleservices/models/prestataire.dart';
@@ -98,12 +98,7 @@ class ListPrestataire extends StatelessWidget {
               final p = provider.searchResults[index];
               return GestureDetector(
                 onTap: () {
-                  Navigator.push(
-                    context,
-                    MaterialPageRoute(
-                      builder: (context) => DetailsPrestataire(prestataire: p),
-                    ),
-                  );
+                  AppNavigation.pushPrestataireDetails(context, p);
                 },
                 child: _PrestataireItem(prestataire: p),
               );

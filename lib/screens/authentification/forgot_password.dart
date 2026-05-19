@@ -5,6 +5,7 @@ import 'package:milleservices/services/utilities.dart';
 import 'package:milleservices/widgets/customButton.dart';
 import 'package:milleservices/widgets/customTextField.dart';
 import 'package:provider/provider.dart';
+import 'package:milleservices/navigation/app_navigation.dart';
 
 class ForgotPasswordScreen extends StatefulWidget {
   const ForgotPasswordScreen({super.key});
@@ -51,7 +52,7 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
     );
 
     if (res.success == true) {
-      Navigator.of(context).pop();
+      AppNavigation.pop(context);
     }
   }
 

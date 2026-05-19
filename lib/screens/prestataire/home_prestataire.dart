@@ -9,10 +9,7 @@ import 'package:milleservices/providers/settings_provider.dart';
 import 'package:milleservices/models/prestation.dart';
 import 'package:milleservices/providers/prestationsProvider.dart';
 import 'package:milleservices/providers/userProvider.dart';
-import 'package:milleservices/screens/edit_infos.dart';
-import 'package:milleservices/screens/historique.dart';
-import 'package:milleservices/screens/prestataire/wallet.dart';
-import 'package:milleservices/screens/welcome.dart';
+import 'package:milleservices/navigation/app_navigation.dart';
 import 'package:milleservices/services/device_location_service.dart';
 import 'package:milleservices/services/app_locale.dart';
 import 'package:milleservices/services/image_helper.dart';
@@ -21,7 +18,6 @@ import 'package:milleservices/services/utilities.dart';
 import 'package:milleservices/widgets/customButton.dart';
 import 'package:milleservices/widgets/prestataire_catalogue_bottom_sheet.dart';
 import 'package:milleservices/widgets/prestataire_catalogue_photo_viewer.dart';
-import 'package:milleservices/screens/notification_list.dart';
 import 'package:provider/provider.dart';
 
 class HomePrestataire extends StatefulWidget {
@@ -140,10 +136,7 @@ class _HomePrestataireState extends State<HomePrestataire> {
           .toList();
     }
     if (!mounted) return;
-    Navigator.push(
-      context,
-      MaterialPageRoute(builder: (_) => Historique(prestations: list)),
-    ).then((value) {
+    AppNavigation.pushHistorique(context, list).then((value) {
       if (value == true && mounted) _loadPrestationStats();
     });
   }
@@ -346,12 +339,7 @@ class _HomePrestataireState extends State<HomePrestataire> {
             ),
             color: Colors.black,
             onPressed: () {
-              Navigator.push(
-                context,
-                MaterialPageRoute(
-                  builder: (_) => const NotificationListScreen(),
-                ),
-              );
+              AppNavigation.pushNotifications(context);
             },
           ),
         ],
@@ -733,10 +721,7 @@ class _HomePrestataireState extends State<HomePrestataire> {
                 ),
                 child: CustomButton(
                   onTap: () {
-                    Navigator.push(
-                      context,
-                      MaterialPageRoute(builder: (context) => EditInfos()),
-                    );
+                    AppNavigation.pushEditInfos(context);
                   },
                   title: Row(
                     spacing: SizeConfig.blockSizeHorizontal * 2,
@@ -779,10 +764,7 @@ child: Text(
                 ),
                 child: CustomButton(
                   onTap: () {
-                    Navigator.push(
-                      context,
-                      MaterialPageRoute(builder: (context) => Wallet()),
-                    );
+                    AppNavigation.pushWallet(context);
                   },
                   title: Row(
                     spacing: SizeConfig.blockSizeHorizontal * 1,
@@ -843,14 +825,10 @@ child: Text(
                       return;
                     }
                     if (!mounted) return;
-                    Navigator.push(
+                    AppNavigation.pushHistorique(
                       context,
-                      MaterialPageRoute(
-                        builder: (_) => Historique(
-                          prestations: List<Prestation>.from(
-                            prestationsProvider.myPrestations,
-                          ),
-                        ),
+                      List<Prestation>.from(
+                        prestationsProvider.myPrestations,
                       ),
                     );
                   },
@@ -917,11 +895,7 @@ child: Text(
                         'presta_become_client_success'.tr(),
                       );
                       await userProvider.logout();
-                      Navigator.pushAndRemoveUntil(
-                        context,
-                        MaterialPageRoute(builder: (context) => Welcome()),
-                        (route) => false,
-                      );
+                      AppNavigation.goWelcome(context);
                     } else {
                       Utilities().showMesage(
                         context,
@@ -969,11 +943,7 @@ child: Text(
                 child: TextButton(
                   onPressed: () {
                     userProvider.logout();
-                    Navigator.pushAndRemoveUntil(
-                      context,
-                      MaterialPageRoute(builder: (context) => const Welcome()),
-                      (route) => false,
-                    );
+                    AppNavigation.goWelcome(context);
                   },
                   child: Text(
                     'profil_logout'.tr(),

@@ -9,10 +9,9 @@ import 'package:milleservices/controllers/geocodingController.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:milleservices/models/prestation.dart';
 import 'package:milleservices/models/response.dart';
+import 'package:milleservices/navigation/app_navigation.dart';
 import 'package:milleservices/providers/prestationsProvider.dart';
 import 'package:milleservices/providers/userProvider.dart';
-import 'package:milleservices/screens/notification_list.dart';
-import 'package:milleservices/screens/particulier/profil_particulier.dart';
 import 'package:milleservices/services/device_location_service.dart';
 import 'package:milleservices/services/map_style.dart';
 import 'package:milleservices/services/google_route_service.dart';
@@ -44,10 +43,17 @@ class _DeroulementPrestationState extends State<DeroulementPrestation> {
   LatLng? _storedPrestataireLatLng;
   String? _storedAddressKey;
   bool _mapInitialLoading = true;
+  /// Évite d'afficher « Payer » avec un statut local obsolète (TERMINEE) avant le GET API.
+  bool _statusSynced = false;
+  /// Masque le bouton payer juste après PayDunya, le temps de confirmer côté serveur.
+  bool _paymentConfirmationPending = false;
 
   @override
   void initState() {
     super.initState();
+    if (widget.prestation.isPayee) {
+      _statusSynced = true;
+    }
     final userProvider = context.read<UserProvider>();
     final prestationsProvider = context.read<PrestationsProvider>();
     _prestationsProvider = prestationsProvider;
@@ -57,6 +63,11 @@ class _DeroulementPrestationState extends State<DeroulementPrestation> {
       userProvider,
       pollInterval: const Duration(seconds: 3),
     );
+    if (!widget.prestation.isPayee) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        unawaited(_syncPrestationStatusOnce());
+      });
+    }
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (Utilities.useRealtimeLocation) {
         unawaited(_refreshMyGps());
@@ -69,6 +80,19 @@ class _DeroulementPrestationState extends State<DeroulementPrestation> {
         if (mounted) setState(() {});
       });
     });
+  }
+
+  Future<void> _syncPrestationStatusOnce() async {
+    final token = context.read<UserProvider>().token;
+    if (token == null || token.isEmpty) {
+      if (mounted) setState(() => _statusSynced = true);
+      return;
+    }
+    await context.read<PrestationsProvider>().fetchPrestationOnceAndEmit(
+      widget.prestation.id,
+      token,
+    );
+    if (mounted) setState(() => _statusSynced = true);
   }
 
   Future<void> _refreshMyGps() async {
@@ -124,6 +148,16 @@ class _DeroulementPrestationState extends State<DeroulementPrestation> {
     super.dispose();
   }
 
+  void _popToAccueil() {
+    final role =
+        context.read<UserProvider>().user?.role?.toString().toUpperCase() ?? '';
+    if (role == 'PARTICULIER') {
+      AppNavigation.goParticulierHome(context);
+    } else {
+      AppNavigation.goHome(context);
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final user = context.watch<UserProvider>().user;
@@ -136,6 +170,18 @@ class _DeroulementPrestationState extends State<DeroulementPrestation> {
       initialData: widget.prestation,
       builder: (context, snapshot) {
         final prestation = snapshot.data ?? widget.prestation;
+        if (prestation.isPayee && _paymentConfirmationPending && mounted) {
+          WidgetsBinding.instance.addPostFrameCallback((_) {
+            if (mounted) {
+              setState(() => _paymentConfirmationPending = false);
+            }
+          });
+        }
+        if (!_statusSynced && prestation.isPayee && mounted) {
+          WidgetsBinding.instance.addPostFrameCallback((_) {
+            if (mounted) setState(() => _statusSynced = true);
+          });
+        }
         if (!Utilities.useRealtimeLocation) {
           unawaited(_refreshStoredAddressPositions(prestation));
         }
@@ -220,7 +266,12 @@ class _DeroulementPrestationState extends State<DeroulementPrestation> {
           );
         }
 
-        return Stack(
+        return PopScope(
+          canPop: false,
+          onPopInvokedWithResult: (didPop, result) {
+            if (!didPop) _popToAccueil();
+          },
+          child: Stack(
           children: [
             Scaffold(
               backgroundColor: Colors.white,
@@ -283,12 +334,7 @@ class _DeroulementPrestationState extends State<DeroulementPrestation> {
                     ),
                     color: Colors.black,
                     onPressed: () {
-                      Navigator.push(
-                        context,
-                        MaterialPageRoute(
-                          builder: (_) => const NotificationListScreen(),
-                        ),
-                      );
+                      AppNavigation.pushNotifications(context);
                     },
                   ),
                   isPrestataireView
@@ -297,12 +343,7 @@ class _DeroulementPrestationState extends State<DeroulementPrestation> {
                           icon: const Icon(Icons.person),
                           color: Colors.black,
                           onPressed: () {
-                            Navigator.push(
-                              context,
-                              MaterialPageRoute(
-                                builder: (context) => ProfilParticulier(),
-                              ),
-                            );
+                            AppNavigation.pushProfil(context);
                           },
                         ),
                 ],
@@ -422,6 +463,7 @@ class _DeroulementPrestationState extends State<DeroulementPrestation> {
                 ),
               ),
           ],
+          ),
         );
       },
     );
@@ -494,6 +536,8 @@ class _DeroulementPrestationState extends State<DeroulementPrestation> {
               isPayee: isPayee,
               isRefusee: isRefusee,
               isPrestataire: isPrestataire,
+              statusSynced: _statusSynced,
+              paymentConfirmationPending: _paymentConfirmationPending,
             ),
           ),
         ],
@@ -732,9 +776,7 @@ class _DeroulementPrestationState extends State<DeroulementPrestation> {
       child: Row(
         children: [
           GestureDetector(
-            onTap: () {
-              Navigator.pop(context);
-            },
+            onTap: _popToAccueil,
             child: Icon(
               Icons.arrow_back_ios,
               color: Colors.white,
@@ -876,6 +918,8 @@ class _DeroulementPrestationState extends State<DeroulementPrestation> {
     required bool isPayee,
     required bool isRefusee,
     required bool isPrestataire,
+    required bool statusSynced,
+    required bool paymentConfirmationPending,
   }) {
     String title;
     String body;
@@ -896,6 +940,12 @@ class _DeroulementPrestationState extends State<DeroulementPrestation> {
     } else if (isEnCours) {
       title = 'deroulement_ongoing_title'.tr();
       body = 'deroulement_ongoing_body'.tr();
+    } else if (paymentConfirmationPending && !isPrestataire) {
+      title = 'deroulement_completed_title'.tr();
+      body = 'Confirmation du paiement en cours…';
+    } else if (isTerminee && !statusSynced && !isPrestataire) {
+      title = 'deroulement_completed_title'.tr();
+      body = '';
     } else if (isTerminee) {
       title = 'deroulement_completed_title'.tr();
       body = isPrestataire
@@ -909,8 +959,9 @@ class _DeroulementPrestationState extends State<DeroulementPrestation> {
       body = '';
     }
 
+    // Décompte uniquement après arrivée sur place (statut EN_COURS ou prestation clôturée).
     final shouldShowExecutionTimer =
-        !isEnAttente && !isRefusee && !isTerminee && !isPayee;
+        (isEnCours || isTerminee || isPayee) && !isRefusee && !isEnAttente;
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -976,7 +1027,7 @@ class _DeroulementPrestationState extends State<DeroulementPrestation> {
             ),
           ),
         ],
-        if (isTerminee && !isPrestataire) ...[
+        if (isTerminee && !isPayee && !isPrestataire && statusSynced) ...[
           SizedBox(height: SizeConfig.blockSizeVertical * 1),
           Center(
             child: Text(
@@ -1048,7 +1099,38 @@ class _DeroulementPrestationState extends State<DeroulementPrestation> {
               ),
             ),
           ),
-        ] else if (isTerminee && !isPrestataire) ...[
+        ] else if (isTerminee &&
+            !isPayee &&
+            !isPrestataire &&
+            !statusSynced) ...[
+          SizedBox(height: SizeConfig.blockSizeVertical * 2.5),
+          Center(
+            child: SizedBox(
+              height: SizeConfig.blockSizeVertical * 6,
+              child: const Center(
+                child: SizedBox(
+                  width: 28,
+                  height: 28,
+                  child: CircularProgressIndicator(strokeWidth: 2.5),
+                ),
+              ),
+            ),
+          ),
+        ] else if (paymentConfirmationPending && !isPrestataire) ...[
+          SizedBox(height: SizeConfig.blockSizeVertical * 2.5),
+          Center(
+            child: SizedBox(
+              height: SizeConfig.blockSizeVertical * 6,
+              child: const Center(
+                child: SizedBox(
+                  width: 28,
+                  height: 28,
+                  child: CircularProgressIndicator(strokeWidth: 2.5),
+                ),
+              ),
+            ),
+          ),
+        ] else if (isTerminee && !isPayee && !isPrestataire && statusSynced) ...[
           SizedBox(height: SizeConfig.blockSizeVertical * 2.5),
           Center(
             child: SizedBox(
@@ -1083,7 +1165,7 @@ class _DeroulementPrestationState extends State<DeroulementPrestation> {
             child: SizedBox(
               height: SizeConfig.blockSizeVertical * 6,
               child: ElevatedButton(
-                onPressed: () => Navigator.of(context).pop(),
+                onPressed: _popToAccueil,
                 style: ElevatedButton.styleFrom(
                   backgroundColor: _red,
                   foregroundColor: Colors.white,
@@ -1237,22 +1319,54 @@ class _DeroulementPrestationState extends State<DeroulementPrestation> {
       ),
     );
     if (!mounted || paid != true) return;
+    setState(() => _paymentConfirmationPending = true);
     Utilities().showMesage(
       context,
       'success',
       'La prestation passera en « payée » après confirmation PayDunya.',
     );
-    await _pollPrestationPayeeOrTimeout(prestation.id, token);
+    await _pollPrestationPayeeOrTimeout(
+      prestation.id,
+      token,
+      invoiceToken,
+    );
+    if (mounted) {
+      setState(() => _paymentConfirmationPending = false);
+    }
   }
 
   Future<void> _pollPrestationPayeeOrTimeout(
     String prestationId,
     String token,
+    String invoiceToken,
   ) async {
     final provider = context.read<PrestationsProvider>();
     for (var i = 0; i < 40; i++) {
-      await Future<void>.delayed(const Duration(seconds: 4));
+      if (i > 0) {
+        await Future<void>.delayed(const Duration(seconds: 4));
+      }
       if (!mounted) return;
+
+      final sync = await PrestationsController.instance
+          .checkPaydunyaInvoicePaid(
+        token: token,
+        prestationId: prestationId,
+        invoiceToken: invoiceToken,
+      );
+      if (sync.success == true && sync.data is Map) {
+        final inner = Map<String, dynamic>.from(sync.data as Map);
+        if (inner['paid'] == true) {
+          await provider.fetchPrestationOnceAndEmit(prestationId, token);
+          if (!mounted) return;
+          Utilities().showMesage(
+            context,
+            'success',
+            'deroulement_marked_paid'.tr(),
+          );
+          return;
+        }
+      }
+
       final res = await PrestationsController.instance.getPrestationById(
         token,
         prestationId,
@@ -1285,7 +1399,11 @@ class _DeroulementPrestationState extends State<DeroulementPrestation> {
   }
 
   DateTime? _durationStart(Prestation p) {
-    return p.acceptedAt ?? p.createdAt;
+    if (p.startedAt != null) return p.startedAt;
+    if (p.isEnCours || p.isTerminee || p.isPayee) {
+      return p.acceptedAt ?? p.createdAt;
+    }
+    return null;
   }
 
   double _executionHours(Prestation p) {

@@ -13,6 +13,8 @@ class Prestation {
   final String? ville;
   final String? noteParticulier;
   final DateTime? acceptedAt;
+  /// Début du décompte (arrivée du prestataire sur place).
+  final DateTime? startedAt;
   final DateTime? completedAt;
   final DateTime? createdAt;
   final PrestationParticulier? particulier;
@@ -31,6 +33,7 @@ class Prestation {
     this.ville,
     this.noteParticulier,
     this.acceptedAt,
+    this.startedAt,
     this.completedAt,
     this.createdAt,
     this.particulier,
@@ -52,6 +55,9 @@ class Prestation {
       noteParticulier: json['noteParticulier']?.toString(),
       acceptedAt: json['acceptedAt'] != null
           ? DateTime.tryParse(json['acceptedAt'].toString())
+          : null,
+      startedAt: json['startedAt'] != null
+          ? DateTime.tryParse(json['startedAt'].toString())
           : null,
       completedAt: json['completedAt'] != null
           ? DateTime.tryParse(json['completedAt'].toString())

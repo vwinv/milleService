@@ -7,14 +7,15 @@ import 'package:milleservices/providers/prestatairesProvider.dart';
 import 'package:milleservices/models/user.dart';
 import 'package:milleservices/providers/settings_provider.dart';
 import 'package:milleservices/providers/userProvider.dart';
-import 'package:milleservices/screens/authentification/login.dart';
+import 'package:milleservices/services/document_picker_helper.dart';
 import 'package:milleservices/services/pick_file_name.dart';
-import 'package:milleservices/services/home_resolver.dart';
+import 'package:milleservices/navigation/app_navigation.dart';
 import 'package:milleservices/services/sizeConfig.dart';
 import 'package:milleservices/services/utilities.dart';
 import 'package:milleservices/widgets/address_autocomplete_field.dart';
 import 'package:milleservices/widgets/customButton.dart';
 import 'package:milleservices/widgets/customTextField.dart';
+import 'package:milleservices/widgets/auth_keyboard_aware_layout.dart';
 import 'package:milleservices/widgets/dashed_upload_zone.dart';
 import 'package:provider/provider.dart';
 
@@ -63,12 +64,12 @@ class _SignUpState extends State<SignUp> with TickerProviderStateMixin {
   // Documents prestataire (nom affiché + fichier pour upload)
   String? cniRectoFileName;
   String? cniVersoFileName;
-  String? casierJudiciaireFileName;
-  String? certificatBonneMoeursFileName;
+  String? certificatResidenceFileName;
+  String? diplomeFileName;
   PlatformFile? cniRectoFile;
   PlatformFile? cniVersoFile;
-  PlatformFile? casierJudiciaireFile;
-  PlatformFile? certificatBonneMoeursFile;
+  PlatformFile? certificatResidenceFile;
+  PlatformFile? diplomeFile;
 
   bool _signUpInProgress = false;
 
@@ -95,183 +96,25 @@ class _SignUpState extends State<SignUp> with TickerProviderStateMixin {
   Future<void> _pickDocument(
     void Function(String name, PlatformFile file) onPicked,
   ) async {
-    final result = await FilePicker.platform.pickFiles(
-      type: FileType.custom,
-      allowedExtensions: ['jpg', 'jpeg', 'png', 'pdf'],
-      withData: true,
-    );
-    if (result != null && result.files.singleOrNull != null && mounted) {
-      final file = result.files.single;
+    final file = await DocumentPickerHelper.pickDocument(context);
+    if (file != null && mounted) {
       onPicked(file.name, file);
     }
   }
 
   @override
   Widget build(BuildContext context) {
-    SizeConfig().init(context);
-    final bottomInset = MediaQuery.of(context).viewInsets.bottom;
-    return Scaffold(
-      // Laisse le contenu remonter quand le clavier s'affiche
-      resizeToAvoidBottomInset: true,
-      backgroundColor: Colors.white,
-      body: Stack(
-        children: [
-          Image.asset("${Utilities().imagePath}ouvrier.jpeg"),
-          SafeArea(
-            child: AnimatedPadding(
-              duration: const Duration(milliseconds: 200),
-              curve: Curves.easeOut,
-              padding: EdgeInsets.only(bottom: bottomInset),
-              child: SizedBox(
-                width: SizeConfig.screenWidth,
-                height: SizeConfig.screenHeight,
-                child: Column(
-                  children: [
-                Padding(
-                  padding: EdgeInsets.only(
-                    top: SizeConfig.blockSizeVertical * 15,
-                    left: SizeConfig.blockSizeHorizontal * 9.5,
-                  ),
-                  child: Row(
-                    spacing: SizeConfig.blockSizeHorizontal * 1,
-                    children: [
-                      CustomButton(
-                        onTap: () {},
-                        title: Center(
-                          child: Text(
-                            "Mille Services",
-                            style: TextStyle(
-                              color: Colors.white,
-                              fontSize: SizeConfig.blockSizeHorizontal * 3,
-                              fontWeight: FontWeight.normal,
-                            ),
-                          ),
-                        ),
-                        color: Utilities().colorGreyDark.withOpacity(0.43),
-                        borderColor: Colors.white,
-                        width: SizeConfig.blockSizeHorizontal * 40,
-                        height: SizeConfig.blockSizeVertical * 3,
-                        borderRadius: SizeConfig.blockSizeHorizontal * 10,
-                      ),
-                      CustomButton(
-                        onTap: () {},
-                        title: Center(
-                          child: Text(
-                            "signup_tagline_for_you".tr(),
-                            style: TextStyle(
-                              color: Colors.white,
-                              fontSize: SizeConfig.blockSizeHorizontal * 3,
-                              fontWeight: FontWeight.normal,
-                            ),
-                          ),
-                        ),
-                        color: Utilities().colorGreyDark.withOpacity(0.43),
-                        borderColor: Colors.white,
-                        width: SizeConfig.blockSizeHorizontal * 40,
-                        height: SizeConfig.blockSizeVertical * 3,
-                        borderRadius: SizeConfig.blockSizeHorizontal * 10,
-                      ),
-                    ],
-                  ),
-                ),
-                Padding(
-                  padding: EdgeInsets.only(
-                    top: SizeConfig.blockSizeVertical * 1,
-                  ),
-                  child: CustomButton(
-                    onTap: () {},
-                    title: Center(
-                      child: Text(
-                        "signup_tagline_from_home".tr(),
-                        style: TextStyle(
-                          color: Colors.white,
-                          fontSize: SizeConfig.blockSizeHorizontal * 3,
-                          fontWeight: FontWeight.normal,
-                        ),
-                      ),
-                    ),
-                    color: Utilities().colorGreyDark.withOpacity(0.43),
-                    borderColor: Colors.white,
-                    width: SizeConfig.blockSizeHorizontal * 40,
-                    height: SizeConfig.blockSizeVertical * 3,
-                    borderRadius: SizeConfig.blockSizeHorizontal * 10,
-                  ),
-                ),
-                Padding(
-                  padding: EdgeInsets.only(
-                    top: SizeConfig.blockSizeVertical * 2,
-                  ),
-                  child: Image.asset("${Utilities().imagePath}logo.png"),
-                ),
-                Padding(
-                  padding: EdgeInsets.only(
-                    top: SizeConfig.blockSizeVertical * 2,
-                  ),
-                  child: Text(
-                    "signup_welcome_title".tr(),
-                    textAlign: TextAlign.center,
-                    style: TextStyle(
-                      color: Colors.black,
-                      fontSize: SizeConfig.blockSizeHorizontal * 4,
-                      fontWeight: FontWeight.bold,
-                    ),
-                  ),
-                ),
-                Container(
-                  width: SizeConfig.blockSizeHorizontal * 90,
-                  height: SizeConfig.blockSizeVertical * 7,
-                  margin: EdgeInsets.symmetric(
-                    vertical: SizeConfig.blockSizeVertical * 2,
-                  ),
-                  padding: EdgeInsets.all(SizeConfig.blockSizeHorizontal * 2),
-                  decoration: BoxDecoration(
-                    color: Utilities().colorBlueLight.withOpacity(0.5),
-                    borderRadius: BorderRadius.circular(
-                      SizeConfig.blockSizeHorizontal * 10,
-                    ),
-                  ),
-                  child: TabBar(
-                    controller: tabController,
-                    dividerColor: Colors.transparent,
-                    labelStyle: TextStyle(
-                      color: Colors.white,
-                      fontSize: SizeConfig.blockSizeHorizontal * 4,
-                      fontWeight: FontWeight.normal,
-                    ),
-                    unselectedLabelStyle: TextStyle(
-                      color: Colors.black,
-                      fontSize: SizeConfig.blockSizeHorizontal * 4,
-                      fontWeight: FontWeight.normal,
-                    ),
-                    indicator: BoxDecoration(
-                      color: Utilities().colorBlueDark,
-                      borderRadius: BorderRadius.circular(
-                        SizeConfig.blockSizeHorizontal * 10,
-                      ),
-                    ),
-                    indicatorSize: TabBarIndicatorSize.tab,
-                    tabs: [
-                      Tab(text: "signup_tab_particulier".tr()),
-                      Tab(text: "signup_tab_professionnel".tr()),
-                    ],
-                  ),
-                ),
-                    Expanded(
-                      child: TabBarView(
-                        controller: tabController,
-                        children: [
-                          _buildForm("particulier"),
-                          _buildForm("prestataire"),
-                        ],
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            ),
-          ),
-        ],
-      ),
+    return AuthKeyboardAwareLayout(
+      tabController: tabController!,
+      taglineForYou: 'signup_tagline_for_you'.tr(),
+      taglineFromHome: 'signup_tagline_from_home'.tr(),
+      welcomeTitle: 'signup_welcome_title'.tr(),
+      tabParticulierLabel: 'signup_tab_particulier'.tr(),
+      tabProfessionnelLabel: 'signup_tab_professionnel'.tr(),
+      tabViews: [
+        _buildForm('particulier'),
+        _buildForm('prestataire'),
+      ],
     );
   }
 
@@ -285,145 +128,136 @@ class _SignUpState extends State<SignUp> with TickerProviderStateMixin {
       _signUpInProgress = true;
       userProvider.setLoading(true);
       try {
-      print("handle sign  ");
-      // final formKey = type == "particulier"
-      //     ? formParticulierKey
-      //     : formPrestataireKey;
-      // TODO: réactiver la validation des formulaires si nécessaire.
+        print("handle sign  ");
+        // final formKey = type == "particulier"
+        //     ? formParticulierKey
+        //     : formPrestataireKey;
+        // TODO: réactiver la validation des formulaires si nécessaire.
 
-      final address = type == "particulier"
-          ? addressParticulierController.text.trim()
-          : addressPrestataireController.text.trim();
-      double? lat;
-      double? lng;
-      if (address.length >= 3) {
-        final coords = await GeocodingController().geocode(address);
-        if (coords != null) {
-          lat = coords.lat;
-          lng = coords.lng;
-        }
-      }
-
-      final particulieData = {
-        "nom": lastnameParticulierController.text.trim(),
-        "prenom": firstnameParticulierController.text.trim(),
-        "telephone": telephoneParticulierController.text.trim(),
-        "adresse": addressParticulierController.text.trim(),
-        if (lat != null) "latitude": lat,
-        if (lng != null) "longitude": lng,
-      };
-      final prestataireData = {
-        "nom": lastnamePrestataireController.text.trim(),
-        "prenom": fistnamePrestataireController.text.trim(),
-        "telephone": telephonePrestataireController.text.trim(),
-        "adresse": addressPrestataireController.text.trim(),
-        "bio": bioPrestataireController.text.trim(),
-        "zoneIntervention": [],
-        "statutVerification": "",
-        if (lat != null) "latitude": lat,
-        if (lng != null) "longitude": lng,
-      };
-
-      final user = User.fromJson({
-        "email": type == "particulier"
-            ? emailParticulierController.text.trim()
-            : emailPrestataireController.text.trim(),
-        "password": type == "particulier"
-            ? passwordParticulierController.text
-            : passwordPrestataireController.text,
-        "particulier": particulieData,
-        "prestataire": prestataireData,
-
-        "role": type == "particulier" ? "PARTICULIER" : "PRESTATAIRE",
-      });
-      print(" user : ${user.toString()}");
-      List<Map<String, String>>? documentsList;
-      if (type == "prestataire") {
-        if (_selectedServiceIdsPrestataire.isEmpty) {
-          if (mounted) {
-            Utilities().showMesage(
-              context,
-              'error',
-              'Veuillez choisir au moins un service.',
-            );
+        final address = type == "particulier"
+            ? addressParticulierController.text.trim()
+            : addressPrestataireController.text.trim();
+        double? lat;
+        double? lng;
+        if (address.length >= 3) {
+          final coords = await GeocodingController().geocode(address);
+          if (coords != null) {
+            lat = coords.lat;
+            lng = coords.lng;
           }
-          return;
         }
-        final toUpload = <String, PlatformFile?>{
-          'cni_recto': cniRectoFile,
-          'cni_verso': cniVersoFile,
-          'casier_judiciaire': casierJudiciaireFile,
-          'certificat_bonne_moeurs': certificatBonneMoeursFile,
+
+        final particulieData = {
+          "nom": lastnameParticulierController.text.trim(),
+          "prenom": firstnameParticulierController.text.trim(),
+          "telephone": telephoneParticulierController.text.trim(),
+          "adresse": addressParticulierController.text.trim(),
+          if (lat != null) "latitude": lat,
+          if (lng != null) "longitude": lng,
         };
-        documentsList = [];
-        for (final entry in toUpload.entries) {
-          final file = entry.value;
-          if (file == null) continue;
-          final up = await Authcontroller.instance.uploadDocument(
-            path: file.path,
-            bytes: file.bytes?.isNotEmpty == true ? file.bytes : null,
-            name: safePickFileName(file),
-          );
-          if (up.url == null || up.url!.isEmpty) {
+        final prestataireData = {
+          "nom": lastnamePrestataireController.text.trim(),
+          "prenom": fistnamePrestataireController.text.trim(),
+          "telephone": telephonePrestataireController.text.trim(),
+          "adresse": addressPrestataireController.text.trim(),
+          "bio": bioPrestataireController.text.trim(),
+          "zoneIntervention": [],
+          "statutVerification": "",
+          if (lat != null) "latitude": lat,
+          if (lng != null) "longitude": lng,
+        };
+
+        final user = User.fromJson({
+          "email": type == "particulier"
+              ? emailParticulierController.text.trim()
+              : emailPrestataireController.text.trim(),
+          "password": type == "particulier"
+              ? passwordParticulierController.text
+              : passwordPrestataireController.text,
+          "particulier": particulieData,
+          "prestataire": prestataireData,
+
+          "role": type == "particulier" ? "PARTICULIER" : "PRESTATAIRE",
+        });
+        print(" user : ${user.toString()}");
+        List<Map<String, String>>? documentsList;
+        if (type == "prestataire") {
+          if (_selectedServiceIdsPrestataire.isEmpty) {
             if (mounted) {
               Utilities().showMesage(
                 context,
                 'error',
-                up.error ?? 'Échec de l\'upload du document: ${file.name}',
+                'Veuillez choisir au moins un service.',
               );
             }
             return;
           }
-          documentsList.add({
-            'typeCode': entry.key,
-            'fichierUrl': up.url!,
-            'nomFichier': file.name,
-          });
-        }
-      }
-
-      final res = await userProvider.signUp(
-        user,
-        type == "particulier"
-            ? passwordParticulierController.text
-            : passwordPrestataireController.text,
-        documents: documentsList?.isEmpty == true ? null : documentsList,
-        serviceIds: type == "prestataire"
-            ? _selectedServiceIdsPrestataire.toList()
-            : null,
-        manageLoading: false,
-      );
-      print("res: ${res.toString()}");
-      if (res.success == true) {
-        if (mounted) {
-          Utilities().showMesage(context, 'success', "signup_success".tr());
-          // Navigation après inscription selon le type d'utilisateur
-
-          Navigator.of(context).pushReplacement(
-            MaterialPageRoute<void>(
-              builder: (_) {
-                return resolveHome(
-                  settings: settings,
-                  userProvider: userProvider,
+          final toUpload = <String, PlatformFile?>{
+            'cni_recto': cniRectoFile,
+            'cni_verso': cniVersoFile,
+            'certificat_residence': certificatResidenceFile,
+            'diplome': diplomeFile,
+          };
+          documentsList = [];
+          for (final entry in toUpload.entries) {
+            final file = entry.value;
+            if (file == null) continue;
+            final up = await Authcontroller.instance.uploadDocument(
+              path: file.path,
+              bytes: file.bytes?.isNotEmpty == true ? file.bytes : null,
+              name: safePickFileName(file),
+            );
+            if (up.url == null || up.url!.isEmpty) {
+              if (mounted) {
+                Utilities().showMesage(
+                  context,
+                  'error',
+                  up.error ?? 'Échec de l\'upload du document: ${file.name}',
                 );
-              },
-            ),
-          );
-        }
-      } else {
-        if (mounted) {
-          final defaultMsg = "signup_failed".tr();
-          final msg = (res.message?.toString().trim().isNotEmpty ?? false)
-              ? (res.message ?? defaultMsg)
-              : defaultMsg;
-          print(msg);
-          WidgetsBinding.instance.addPostFrameCallback((_) {
-            if (context.mounted) {
-              Utilities().showMesage(context, 'error', msg);
+              }
+              return;
             }
-          });
+            documentsList.add({
+              'typeCode': entry.key,
+              'fichierUrl': up.url!,
+              'nomFichier': file.name,
+            });
+          }
         }
-      }
+
+        final res = await userProvider.signUp(
+          user,
+          type == "particulier"
+              ? passwordParticulierController.text
+              : passwordPrestataireController.text,
+          documents: documentsList?.isEmpty == true ? null : documentsList,
+          serviceIds: type == "prestataire"
+              ? _selectedServiceIdsPrestataire.toList()
+              : null,
+          manageLoading: false,
+        );
+        print("res: ${res.toString()}");
+        if (res.success == true) {
+          if (mounted) {
+            Utilities().showMesage(context, 'success', "signup_success".tr());
+            // Navigation après inscription selon le type d'utilisateur
+
+          AppNavigation.goHome(context);
+          }
+        } else {
+          if (mounted) {
+            final defaultMsg = "signup_failed".tr();
+            final msg = (res.message?.toString().trim().isNotEmpty ?? false)
+                ? (res.message ?? defaultMsg)
+                : defaultMsg;
+            print(msg);
+            WidgetsBinding.instance.addPostFrameCallback((_) {
+              if (context.mounted) {
+                Utilities().showMesage(context, 'error', msg);
+              }
+            });
+          }
+        }
       } finally {
         _signUpInProgress = false;
         userProvider.setLoading(false);
@@ -431,11 +265,7 @@ class _SignUpState extends State<SignUp> with TickerProviderStateMixin {
     }
 
     return SingleChildScrollView(
-      padding: EdgeInsets.only(
-        bottom:
-            MediaQuery.of(context).viewInsets.bottom +
-            SizeConfig.blockSizeVertical * 2,
-      ),
+      padding: AuthKeyboardAwareLayout.formScrollPadding(context),
       child: Form(
         key: type == "particulier" ? formParticulierKey : formPrestataireKey,
         child: Column(
@@ -871,7 +701,7 @@ class _SignUpState extends State<SignUp> with TickerProviderStateMixin {
               ),
               SizedBox(height: SizeConfig.blockSizeVertical * 1.2),
               Text(
-                "signup_doc_casier_title".tr(),
+                "signup_doc_residence_title".tr(),
                 style: TextStyle(
                   color: Utilities().colorGreyDark,
                   fontSize: SizeConfig.blockSizeHorizontal * 3,
@@ -880,18 +710,18 @@ class _SignUpState extends State<SignUp> with TickerProviderStateMixin {
               ),
               SizedBox(height: SizeConfig.blockSizeVertical * 0.8),
               DashedUploadZone(
-                title: "signup_doc_casier_tile_title".tr(),
-                fileName: casierJudiciaireFileName,
+                title: "signup_doc_residence_tile_title".tr(),
+                fileName: certificatResidenceFileName,
                 onTap: () => _pickDocument(
                   (name, file) => setState(() {
-                    casierJudiciaireFileName = name;
-                    casierJudiciaireFile = file;
+                    certificatResidenceFileName = name;
+                    certificatResidenceFile = file;
                   }),
                 ),
               ),
               SizedBox(height: SizeConfig.blockSizeVertical * 1.2),
               Text(
-                "signup_doc_certif_title".tr(),
+                "signup_doc_diplome_title".tr(),
                 style: TextStyle(
                   color: Utilities().colorGreyDark,
                   fontSize: SizeConfig.blockSizeHorizontal * 3,
@@ -900,12 +730,12 @@ class _SignUpState extends State<SignUp> with TickerProviderStateMixin {
               ),
               SizedBox(height: SizeConfig.blockSizeVertical * 0.8),
               DashedUploadZone(
-                title: "signup_doc_certif_tile_title".tr(),
-                fileName: certificatBonneMoeursFileName,
+                title: "signup_doc_diplome_tile_title".tr(),
+                fileName: diplomeFileName,
                 onTap: () => _pickDocument(
                   (name, file) => setState(() {
-                    certificatBonneMoeursFileName = name;
-                    certificatBonneMoeursFile = file;
+                    diplomeFileName = name;
+                    diplomeFile = file;
                   }),
                 ),
               ),
@@ -958,10 +788,7 @@ class _SignUpState extends State<SignUp> with TickerProviderStateMixin {
                 ),
                 GestureDetector(
                   onTap: () {
-                    Navigator.push(
-                      context,
-                      MaterialPageRoute(builder: (context) => Login()),
-                    );
+                    AppNavigation.goLogin(context);
                   },
                   child: Text(
                     "signup_go_to_login".tr(),

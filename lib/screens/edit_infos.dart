@@ -4,7 +4,7 @@ import 'package:milleservices/controllers/authController.dart';
 import 'package:milleservices/models/response.dart';
 import 'package:milleservices/providers/userProvider.dart';
 import 'package:milleservices/providers/prestatairesProvider.dart';
-import 'package:milleservices/screens/welcome.dart';
+import 'package:milleservices/navigation/app_navigation.dart';
 import 'package:milleservices/services/image_helper.dart';
 import 'package:milleservices/services/sizeConfig.dart';
 import 'package:milleservices/services/utilities.dart';
@@ -110,7 +110,7 @@ class _EditInfosState extends State<EditInfos> {
         elevation: 0,
         leading: IconButton(
           icon: const Icon(Icons.arrow_back_ios, color: Colors.black),
-          onPressed: () => Navigator.of(context).pop(),
+          onPressed: () => AppNavigation.pop(context),
         ),
         centerTitle: true,
         title: Text(
@@ -565,11 +565,7 @@ class _EditInfosState extends State<EditInfos> {
                       'success',
                       "Votre compte a été désactivé. Pour une réactivation, contactez notre équipe au ${Utilities().telephoneEquipe}.",
                     );
-                    Navigator.pushAndRemoveUntil(
-                      context,
-                      MaterialPageRoute(builder: (_) => const Welcome()),
-                      (route) => false,
-                    );
+                    AppNavigation.goWelcome(context);
                   } else {
                     Utilities().showMesage(
                       context,

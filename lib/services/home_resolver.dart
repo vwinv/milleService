@@ -1,8 +1,6 @@
 import 'package:flutter/material.dart';
-import 'package:milleservices/providers/home_content_provider.dart';
 import 'package:milleservices/providers/settings_provider.dart';
 import 'package:milleservices/providers/userProvider.dart';
-import 'package:provider/provider.dart';
 import 'package:milleservices/screens/particulier/home_particulier.dart';
 import 'package:milleservices/screens/prestataire/home_abonnement.dart';
 import 'package:milleservices/screens/prestataire/home_prestataire.dart';
@@ -100,9 +98,6 @@ Widget _resolveHomeSync({
     if (settings.locale == null) {
       return const Settings();
     }
-    return ChangeNotifierProvider(
-      create: (_) => HomeContentProvider(),
-      child: const HomeParticulier(),
-    );
+    return const HomeParticulier();
   }
 }

@@ -1,12 +1,11 @@
 import 'package:easy_localization/easy_localization.dart';
 import 'package:flutter/material.dart';
-import 'package:milleservices/providers/settings_provider.dart';
 import 'package:milleservices/providers/userProvider.dart';
-import 'package:milleservices/screens/authentification/forgot_password.dart';
-import 'package:milleservices/screens/authentification/signup.dart';
-import 'package:milleservices/services/home_resolver.dart';
+import 'package:milleservices/navigation/app_navigation.dart';
+import 'package:go_router/go_router.dart';
 import 'package:milleservices/services/sizeConfig.dart';
 import 'package:milleservices/services/utilities.dart';
+import 'package:milleservices/widgets/auth_keyboard_aware_layout.dart';
 import 'package:milleservices/widgets/customButton.dart';
 import 'package:milleservices/widgets/customTextField.dart';
 import 'package:provider/provider.dart';
@@ -43,170 +42,17 @@ class _LoginState extends State<Login> with TickerProviderStateMixin {
 
   @override
   Widget build(BuildContext context) {
-    SizeConfig().init(context);
-    final bottomInset = MediaQuery.of(context).viewInsets.bottom;
-    return Scaffold(
-      // Laisse le contenu remonter quand le clavier s'affiche
-      resizeToAvoidBottomInset: true,
-      backgroundColor: Colors.white,
-      body: Stack(
-        children: [
-          Image.asset("${Utilities().imagePath}ouvrier.jpeg"),
-          SafeArea(
-            child: AnimatedPadding(
-              duration: const Duration(milliseconds: 200),
-              curve: Curves.easeOut,
-              padding: EdgeInsets.only(bottom: bottomInset),
-              child: SizedBox(
-                width: SizeConfig.screenWidth,
-                height: SizeConfig.screenHeight,
-                child: Column(
-                  children: [
-                Padding(
-                  padding: EdgeInsets.only(
-                    top: SizeConfig.blockSizeVertical * 15,
-                    left: SizeConfig.blockSizeHorizontal * 9.5,
-                  ),
-                  child: Row(
-                    spacing: SizeConfig.blockSizeHorizontal * 1,
-                    children: [
-                      CustomButton(
-                        onTap: () {},
-                        title: Center(
-                          child: Text(
-                            "Mille Services",
-                            style: TextStyle(
-                              color: Colors.white,
-                              fontSize: SizeConfig.blockSizeHorizontal * 3,
-                              fontWeight: FontWeight.normal,
-                            ),
-                          ),
-                        ),
-                        color: Utilities().colorGreyDark.withOpacity(0.43),
-                        borderColor: Colors.white,
-                        width: SizeConfig.blockSizeHorizontal * 40,
-                        height: SizeConfig.blockSizeVertical * 3,
-                        borderRadius: SizeConfig.blockSizeHorizontal * 10,
-                      ),
-                      CustomButton(
-                        onTap: () {},
-                        title: Center(
-                          child: Text(
-                            "login_tagline_for_you".tr(),
-                            style: TextStyle(
-                              color: Colors.white,
-                              fontSize: SizeConfig.blockSizeHorizontal * 3,
-                              fontWeight: FontWeight.normal,
-                            ),
-                          ),
-                        ),
-                        color: Utilities().colorGreyDark.withOpacity(0.43),
-                        borderColor: Colors.white,
-                        width: SizeConfig.blockSizeHorizontal * 40,
-                        height: SizeConfig.blockSizeVertical * 3,
-                        borderRadius: SizeConfig.blockSizeHorizontal * 10,
-                      ),
-                    ],
-                  ),
-                ),
-                Padding(
-                  padding: EdgeInsets.only(
-                    top: SizeConfig.blockSizeVertical * 1,
-                  ),
-                  child: CustomButton(
-                    onTap: () {},
-                    title: Center(
-                      child: Text(
-                        "login_tagline_from_home".tr(),
-                        style: TextStyle(
-                          color: Colors.white,
-                          fontSize: SizeConfig.blockSizeHorizontal * 3,
-                          fontWeight: FontWeight.normal,
-                        ),
-                      ),
-                    ),
-                    color: Utilities().colorGreyDark.withOpacity(0.43),
-                    borderColor: Colors.white,
-                    width: SizeConfig.blockSizeHorizontal * 40,
-                    height: SizeConfig.blockSizeVertical * 3,
-                    borderRadius: SizeConfig.blockSizeHorizontal * 10,
-                  ),
-                ),
-                Padding(
-                  padding: EdgeInsets.only(
-                    top: SizeConfig.blockSizeVertical * 2,
-                  ),
-                  child: Image.asset("${Utilities().imagePath}logo.png"),
-                ),
-                Padding(
-                  padding: EdgeInsets.only(
-                    top: SizeConfig.blockSizeVertical * 2,
-                  ),
-                  child: Text(
-                    "login_welcome_title".tr(),
-                    textAlign: TextAlign.center,
-                    style: TextStyle(
-                      color: Colors.black,
-                      fontSize: SizeConfig.blockSizeHorizontal * 4,
-                      fontWeight: FontWeight.bold,
-                    ),
-                  ),
-                ),
-                Container(
-                  width: SizeConfig.blockSizeHorizontal * 90,
-                  height: SizeConfig.blockSizeVertical * 7,
-                  margin: EdgeInsets.symmetric(
-                    vertical: SizeConfig.blockSizeVertical * 2,
-                  ),
-                  padding: EdgeInsets.all(SizeConfig.blockSizeHorizontal * 2),
-                  decoration: BoxDecoration(
-                    color: Utilities().colorBlueLight.withOpacity(0.5),
-                    borderRadius: BorderRadius.circular(
-                      SizeConfig.blockSizeHorizontal * 10,
-                    ),
-                  ),
-                  child: TabBar(
-                    controller: tabController,
-                    dividerColor: Colors.transparent,
-                    labelStyle: TextStyle(
-                      color: Colors.white,
-                      fontSize: SizeConfig.blockSizeHorizontal * 4,
-                      fontWeight: FontWeight.normal,
-                    ),
-                    unselectedLabelStyle: TextStyle(
-                      color: Colors.black,
-                      fontSize: SizeConfig.blockSizeHorizontal * 4,
-                      fontWeight: FontWeight.normal,
-                    ),
-                    indicator: BoxDecoration(
-                      color: Utilities().colorBlueDark,
-                      borderRadius: BorderRadius.circular(
-                        SizeConfig.blockSizeHorizontal * 10,
-                      ),
-                    ),
-                    indicatorSize: TabBarIndicatorSize.tab,
-                    tabs: [
-                      Tab(text: "login_tab_particulier".tr()),
-                      Tab(text: "login_tab_professionnel".tr()),
-                    ],
-                  ),
-                ),
-                    Expanded(
-                      child: TabBarView(
-                        controller: tabController,
-                        children: [
-                          _buildForm("particulier", context),
-                          _buildForm("prestataire", context),
-                        ],
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            ),
-          ),
-        ],
-      ),
+    return AuthKeyboardAwareLayout(
+      tabController: tabController!,
+      taglineForYou: 'login_tagline_for_you'.tr(),
+      taglineFromHome: 'login_tagline_from_home'.tr(),
+      welcomeTitle: 'login_welcome_title'.tr(),
+      tabParticulierLabel: 'login_tab_particulier'.tr(),
+      tabProfessionnelLabel: 'login_tab_professionnel'.tr(),
+      tabViews: [
+        _buildForm('particulier', context),
+        _buildForm('prestataire', context),
+      ],
     );
   }
 
@@ -235,20 +81,7 @@ class _LoginState extends State<Login> with TickerProviderStateMixin {
       if (res.success == true) {
         if (mounted) {
           Utilities().showMesage(context, 'success', "login_success".tr());
-          final settings = Provider.of<SettingsProvider>(
-            context,
-            listen: false,
-          );
-          Navigator.of(context).pushReplacement(
-            MaterialPageRoute<void>(
-              builder: (_) {
-                return resolveHome(
-                  settings: settings,
-                  userProvider: userProvider,
-                );
-              },
-            ),
-          );
+          AppNavigation.goHome(context);
         }
       } else {
         if (mounted) {
@@ -267,11 +100,7 @@ class _LoginState extends State<Login> with TickerProviderStateMixin {
     }
 
     return SingleChildScrollView(
-      padding: EdgeInsets.only(
-        bottom:
-            MediaQuery.of(context).viewInsets.bottom +
-            SizeConfig.blockSizeVertical * 2,
-      ),
+      padding: AuthKeyboardAwareLayout.formScrollPadding(context),
       key: type == "particulier" ? formParticulierKey : formPrestataireKey,
       child: Form(
         child: Column(
@@ -367,12 +196,7 @@ class _LoginState extends State<Login> with TickerProviderStateMixin {
               alignment: Alignment.centerLeft,
               child: GestureDetector(
                 onTap: () {
-                  Navigator.push(
-                    context,
-                    MaterialPageRoute(
-                      builder: (context) => const ForgotPasswordScreen(),
-                    ),
-                  );
+                  context.push('/forgot-password');
                 },
                 child: Padding(
                   padding: EdgeInsets.only(
@@ -438,10 +262,7 @@ class _LoginState extends State<Login> with TickerProviderStateMixin {
                 ),
                 GestureDetector(
                   onTap: () {
-                    Navigator.pushReplacement(
-                      context,
-                      MaterialPageRoute(builder: (context) => SignUp()),
-                    );
+                    AppNavigation.goSignUp(context);
                   },
                   child: Text(
                     "login_register_now".tr(),

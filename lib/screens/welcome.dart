@@ -1,7 +1,6 @@
 import 'package:easy_localization/easy_localization.dart';
 import 'package:flutter/material.dart';
-import 'package:milleservices/screens/authentification/login.dart';
-import 'package:milleservices/screens/authentification/signup.dart';
+import 'package:milleservices/navigation/app_navigation.dart';
 import 'package:milleservices/services/sizeConfig.dart';
 import 'package:milleservices/services/utilities.dart';
 import 'package:milleservices/widgets/customButton.dart';
@@ -56,12 +55,7 @@ class _WelcomeState extends State<Welcome> {
                       horizontal: SizeConfig.blockSizeHorizontal * 10,
                     ),
                     child: CustomButton(
-                      onTap: () {
-                        Navigator.push(
-                          context,
-                          MaterialPageRoute(builder: (context) => Login()),
-                        );
-                      },
+                      onTap: () => AppNavigation.goLogin(context),
                       title: Center(
                         child: Text(
                           "login".tr(),
@@ -85,12 +79,7 @@ class _WelcomeState extends State<Welcome> {
                       horizontal: SizeConfig.blockSizeHorizontal * 10,
                     ),
                     child: CustomButton(
-                      onTap: () {
-                        Navigator.push(
-                          context,
-                          MaterialPageRoute(builder: (context) => SignUp()),
-                        );
-                      },
+                      onTap: () => AppNavigation.goSignUp(context),
                       title: Center(
                         child: Text(
                           "signup".tr(),

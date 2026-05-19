@@ -7,7 +7,8 @@ import 'package:milleservices/controllers/prestationsController.dart';
 import 'package:milleservices/models/prestation.dart';
 import 'package:milleservices/models/prestataire.dart';
 import 'package:milleservices/providers/userProvider.dart';
-import 'package:milleservices/screens/deroulement_prestation.dart';
+import 'package:milleservices/navigation/app_navigation.dart';
+import 'package:milleservices/router/route_extras.dart';
 import 'package:milleservices/services/device_location_service.dart';
 import 'package:milleservices/services/image_helper.dart';
 import 'package:milleservices/services/sizeConfig.dart';
@@ -143,12 +144,16 @@ class _ConfirmPrestationState extends State<ConfirmPrestation> {
     setState(() => _isSubmitting = false);
 
     if (!result.success) {
+      final isDuplicate = result.status == 409;
+      final msg = result.message?.trim();
       Utilities().showMesage(
         context,
         'error',
-        result.message?.isNotEmpty == true
-            ? result.message!
-            : 'confirm_create_failed'.tr(),
+        msg != null && msg.isNotEmpty
+            ? msg
+            : isDuplicate
+                ? 'confirm_duplicate_prestation'.tr()
+                : 'confirm_create_failed'.tr(),
       );
       return;
     }
@@ -160,12 +165,7 @@ class _ConfirmPrestationState extends State<ConfirmPrestation> {
     }
 
     final prestation = Prestation.fromJson(data);
-    Navigator.pushReplacement(
-      context,
-      MaterialPageRoute<void>(
-        builder: (context) => DeroulementPrestation(prestation: prestation),
-      ),
-    );
+    AppNavigation.goParticulierPrestation(context, prestation);
   }
 
   String? _resolvedPrestataireServiceId() {
@@ -296,7 +296,7 @@ class _ConfirmPrestationState extends State<ConfirmPrestation> {
         leading: IconButton(
           icon: const Icon(Icons.arrow_back_ios),
           color: Colors.black,
-          onPressed: () => Navigator.of(context).pop(),
+          onPressed: () => AppNavigation.pop(context),
         ),
         title: Text(
           'confirm_title'.tr(),

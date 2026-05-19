@@ -49,7 +49,11 @@ class PrestationsProvider extends ChangeNotifier {
     _listeningPrestationId = prestationId;
     _pollInterval = pollInterval;
     _listening = true;
-    _pollLoop(userProvider);
+    unawaited(_pollLoop(userProvider));
+    final token = userProvider.token;
+    if (token != null && token.isNotEmpty) {
+      unawaited(fetchPrestationOnceAndEmit(prestationId, token));
+    }
   }
 
   Future<void> _pollLoop(UserProvider userProvider) async {

@@ -1,19 +1,16 @@
 import 'package:easy_localization/easy_localization.dart';
 import 'package:flutter/material.dart';
 import 'package:milleservices/widgets/customButton.dart';
-import 'package:milleservices/screens/edit_infos.dart';
 import 'package:provider/provider.dart';
 import 'package:milleservices/models/user.dart';
 import 'package:milleservices/providers/userProvider.dart';
 import 'package:milleservices/providers/prestationsProvider.dart';
 import 'package:milleservices/models/prestation.dart';
-import 'package:milleservices/screens/historique.dart';
+import 'package:milleservices/navigation/app_navigation.dart';
 import 'package:milleservices/providers/settings_provider.dart';
 import 'package:milleservices/services/app_locale.dart';
 import 'package:milleservices/services/sizeConfig.dart';
 import 'package:milleservices/services/utilities.dart';
-import 'package:milleservices/screens/welcome.dart';
-
 class ProfilParticulier extends StatefulWidget {
   const ProfilParticulier({super.key});
 
@@ -42,7 +39,7 @@ class _ProfilParticulierState extends State<ProfilParticulier> {
           elevation: 0,
           leading: IconButton(
             icon: const Icon(Icons.arrow_back_ios, color: Colors.black),
-            onPressed: () => Navigator.of(context).pop(),
+            onPressed: () => AppNavigation.pop(context),
           ),
           title: Text(
             'profil_title'.tr(),
@@ -64,7 +61,7 @@ class _ProfilParticulierState extends State<ProfilParticulier> {
                       ),
                       const SizedBox(height: 16),
                       TextButton(
-                        onPressed: () => Navigator.of(context).pop(),
+                        onPressed: () => AppNavigation.pop(context),
                         child: Text('common_back'.tr()),
                       ),
                     ],
@@ -84,7 +81,7 @@ class _ProfilParticulierState extends State<ProfilParticulier> {
         elevation: 0,
         leading: IconButton(
           icon: const Icon(Icons.arrow_back_ios, color: Colors.black),
-          onPressed: () => Navigator.of(context).pop(),
+          onPressed: () => AppNavigation.pop(context),
         ),
         title: Text(
           'profil_title'.tr(),
@@ -226,15 +223,9 @@ class _ProfilParticulierState extends State<ProfilParticulier> {
                   return;
                 }
 
-                Navigator.push(
+                AppNavigation.pushHistorique(
                   context,
-                  MaterialPageRoute(
-                    builder: (_) => Historique(
-                      prestations: List<Prestation>.from(
-                        prestationsProvider.myPrestations,
-                      ),
-                    ),
-                  ),
+                  List<Prestation>.from(prestationsProvider.myPrestations),
                 );
               },
             ),
@@ -277,11 +268,7 @@ class _ProfilParticulierState extends State<ProfilParticulier> {
                       'profil_become_provider_success'.tr(),
                     );
                     await context.read<UserProvider>().logout();
-                    Navigator.pushAndRemoveUntil(
-                      context,
-                      MaterialPageRoute(builder: (context) => const Welcome()),
-                      (route) => false,
-                    );
+                    AppNavigation.goWelcome(context);
                   } else {
                     Utilities().showMesage(
                       context,
@@ -309,10 +296,7 @@ class _ProfilParticulierState extends State<ProfilParticulier> {
               icon: Icons.person_outline,
               label: 'profil_personal_info'.tr(),
               onTap: () {
-                Navigator.push(
-                  context,
-                  MaterialPageRoute(builder: (context) => const EditInfos()),
-                );
+                AppNavigation.pushEditInfos(context);
               },
               trailing: const Icon(
                 Icons.arrow_forward_ios,
@@ -325,11 +309,7 @@ class _ProfilParticulierState extends State<ProfilParticulier> {
             TextButton(
         onPressed: () {
           userProvider.logout();
-                Navigator.pushAndRemoveUntil(
-            context,
-                  MaterialPageRoute(builder: (context) => const Welcome()),
-                  (route) => false,
-                );
+                AppNavigation.goWelcome(context);
               },
               child: Text(
                 'profil_logout'.tr(),

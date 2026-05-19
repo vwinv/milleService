@@ -3,13 +3,11 @@ import 'dart:async';
 import 'package:easy_localization/easy_localization.dart';
 import 'package:flutter/material.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart';
-import 'package:milleservices/screens/particulier/profil_particulier.dart';
 import 'package:provider/provider.dart';
 import 'package:milleservices/models/prestataire.dart';
 import 'package:milleservices/providers/home_content_provider.dart';
 import 'package:milleservices/providers/prestatairesProvider.dart';
 import 'package:milleservices/providers/userProvider.dart';
-import 'package:milleservices/screens/particulier/details_prestataire.dart';
 import 'package:milleservices/screens/particulier/pages/demander_service_page.dart';
 import 'package:milleservices/screens/particulier/pages/favoris_content.dart';
 import 'package:milleservices/controllers/geocodingController.dart';
@@ -18,7 +16,7 @@ import 'package:milleservices/services/map_marker_badge.dart';
 import 'package:milleservices/services/sizeConfig.dart';
 import 'package:milleservices/services/utilities.dart';
 import 'package:milleservices/services/app_map.dart';
-import 'package:milleservices/screens/notification_list.dart';
+import 'package:milleservices/navigation/app_navigation.dart';
 
 class HomeParticulier extends StatefulWidget {
   const HomeParticulier({super.key});
@@ -189,22 +187,14 @@ class _HomeParticulierState extends State<HomeParticulier> {
             ),
             color: Colors.black,
             onPressed: () {
-              Navigator.push(
-                context,
-                MaterialPageRoute(
-                  builder: (_) => const NotificationListScreen(),
-                ),
-              );
+              AppNavigation.pushNotifications(context);
             },
           ),
           IconButton(
             icon: const Icon(Icons.person),
             color: Colors.black,
             onPressed: () {
-              Navigator.push(
-                context,
-                MaterialPageRoute(builder: (context) => ProfilParticulier()),
-              );
+              AppNavigation.pushProfil(context);
             },
           ),
         ],
@@ -494,12 +484,7 @@ class _HomeMapState extends State<_HomeMap> {
             infoWindow: InfoWindow(
               title: p.nom,
               onTap: () {
-                Navigator.push(
-                  context,
-                  MaterialPageRoute<void>(
-                    builder: (_) => DetailsPrestataire(prestataire: p),
-                  ),
-                );
+                AppNavigation.pushPrestataireDetails(context, p);
               },
             ),
           ),

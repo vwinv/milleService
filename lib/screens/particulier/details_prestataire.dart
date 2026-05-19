@@ -5,8 +5,8 @@ import 'package:milleservices/models/prestataire.dart';
 import 'package:milleservices/models/prestataire_photo.dart';
 import 'package:milleservices/providers/prestatairesProvider.dart';
 import 'package:milleservices/providers/userProvider.dart';
-import 'package:milleservices/screens/particulier/confirm_prestation.dart';
-import 'package:milleservices/screens/particulier/profil_particulier.dart';
+import 'package:milleservices/navigation/app_navigation.dart';
+import 'package:milleservices/router/route_extras.dart';
 import 'package:milleservices/services/app_map.dart';
 import 'package:milleservices/services/map_marker_badge.dart';
 import 'package:milleservices/services/sizeConfig.dart';
@@ -79,7 +79,7 @@ class _DetailsPrestataireState extends State<DetailsPrestataire> {
       barrierColor: Colors.black.withOpacity(0.9),
       builder: (ctx) {
         return GestureDetector(
-          onTap: () => Navigator.of(ctx).pop(),
+          onTap: () => AppNavigation.pop(ctx),
           child: Scaffold(
             backgroundColor: Colors.transparent,
             body: SafeArea(
@@ -106,7 +106,7 @@ class _DetailsPrestataireState extends State<DetailsPrestataire> {
                     top: SizeConfig.blockSizeVertical * 1.5,
                     right: SizeConfig.blockSizeHorizontal * 4,
                     child: IconButton(
-                      onPressed: () => Navigator.of(ctx).pop(),
+                      onPressed: () => AppNavigation.pop(ctx),
                       icon: const Icon(Icons.close),
                       color: Colors.white,
                     ),
@@ -186,10 +186,7 @@ class _DetailsPrestataireState extends State<DetailsPrestataire> {
             icon: const Icon(Icons.person),
             color: Colors.black,
             onPressed: () {
-              Navigator.push(
-                context,
-                MaterialPageRoute(builder: (context) => ProfilParticulier()),
-              );
+              AppNavigation.pushProfil(context);
             },
           ),
         ],
@@ -205,7 +202,7 @@ class _DetailsPrestataireState extends State<DetailsPrestataire> {
               spacing: SizeConfig.blockSizeHorizontal * 2,
               children: [
                 GestureDetector(
-                  onTap: () => Navigator.of(context).pop(),
+                  onTap: () => AppNavigation.pop(context),
                   child: Icon(
                     Icons.arrow_back_ios,
                     color: Colors.black,
@@ -686,15 +683,13 @@ class _DetailsPrestataireState extends State<DetailsPrestataire> {
       }
       return;
     }
-    Navigator.push(
+    AppNavigation.pushConfirmPrestation(
       context,
-      MaterialPageRoute<void>(
-        builder: (context) => ConfirmPrestation(
-          prestataire: widget.prestataire,
-          prestataireServiceId: prestataireServiceId,
-          serviceLibelle: firstService.libelle,
-          adresseParticulier: userProvider.user?.adresse?.toString(),
-        ),
+      ConfirmPrestationExtra(
+        prestataire: widget.prestataire,
+        prestataireServiceId: prestataireServiceId,
+        serviceLibelle: firstService.libelle,
+        adresseParticulier: userProvider.user?.adresse?.toString(),
       ),
     );
   }

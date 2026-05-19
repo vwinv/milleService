@@ -498,6 +498,81 @@ class PrestationsController {
     }
   }
 
+  /// Vérifie chez PayDunya si la facture est payée et enregistre en base (repli IPN).
+  Future<ResponseData> checkPaydunyaInvoicePaid({
+    required String token,
+    required String prestationId,
+    required String invoiceToken,
+  }) async {
+    try {
+      final hasInternet = await _checkInternetConnection();
+      if (!hasInternet) {
+        return ResponseData(
+          success: false,
+          message:
+              "Aucune connexion internet. Veuillez vérifier votre connexion et réessayer.",
+          data: null,
+          status: 0,
+          emailNotVerified: false,
+        );
+      }
+      _paiementLog(
+        'invoice-paid → GET /prestations/$prestationId/paiement/paydunya/invoice-paid',
+      );
+      final response = await dio.get(
+        '/prestations/$prestationId/paiement/paydunya/invoice-paid',
+        queryParameters: {'invoiceToken': invoiceToken},
+        options: Options(
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': 'Bearer $token',
+          },
+          validateStatus: (status) => status != null && status < 500,
+        ),
+      );
+      final raw = response.data;
+      Map<String, dynamic>? map;
+      if (raw is Map) {
+        map = Map<String, dynamic>.from(raw);
+      }
+      final inner = map != null && map['data'] != null && map['data'] is Map
+          ? Map<String, dynamic>.from(map['data'] as Map)
+          : map;
+      final ok = response.statusCode == 200;
+      final paid = inner?['paid'] == true;
+      _paiementLog(
+        'invoice-paid ← status=${response.statusCode} paid=$paid',
+      );
+      return ResponseData(
+        success: ok,
+        data: inner,
+        status: response.statusCode,
+        message: map != null ? (map['message']?.toString() ?? '') : '',
+        emailNotVerified: false,
+      );
+    } on DioException catch (e) {
+      _paiementLog('invoice-paid ✗ Dio ${e.response?.statusCode}');
+      return ResponseData.fromJson({
+        'success': false,
+        'data': null,
+        'status': e.response?.statusCode ?? 500,
+        'message': e.response?.data is Map
+            ? (e.response!.data['message'] ?? 'Erreur serveur')
+            : 'Erreur serveur',
+        'emailNotVerified': false,
+      });
+    } catch (e) {
+      _paiementLog('invoice-paid ✗ exception $e');
+      return ResponseData.fromJson({
+        'success': false,
+        'data': null,
+        'status': 500,
+        'message': 'Erreur inconnue',
+        'emailNotVerified': false,
+      });
+    }
+  }
+
   /// Prépare un paiement PayDunya pour une prestation terminée. POST …/paiement/paydunya/init
   Future<ResponseData> initPaydunyaPaiement(
     String token,

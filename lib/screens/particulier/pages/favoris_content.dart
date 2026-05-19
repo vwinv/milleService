@@ -4,7 +4,7 @@ import 'package:provider/provider.dart';
 import 'package:milleservices/models/prestataire.dart';
 import 'package:milleservices/providers/home_content_provider.dart';
 import 'package:milleservices/providers/prestatairesProvider.dart';
-import 'package:milleservices/screens/particulier/details_prestataire.dart';
+import 'package:milleservices/navigation/app_navigation.dart';
 import 'package:milleservices/services/dynamic_translation_service.dart';
 import 'package:milleservices/services/sizeConfig.dart';
 import 'package:milleservices/services/utilities.dart';
@@ -195,12 +195,7 @@ class FavoriCard extends StatelessWidget {
     return InkWell(
       borderRadius: BorderRadius.circular(SizeConfig.blockSizeHorizontal * 2),
       onTap: () {
-        Navigator.push(
-          context,
-          MaterialPageRoute<void>(
-            builder: (_) => DetailsPrestataire(prestataire: prestataire),
-          ),
-        );
+        AppNavigation.pushPrestataireDetails(context, prestataire);
       },
       child: Container(
         margin: EdgeInsets.only(bottom: SizeConfig.blockSizeVertical * 2),

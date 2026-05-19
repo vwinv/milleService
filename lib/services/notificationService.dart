@@ -10,7 +10,8 @@ import 'package:milleservices/controllers/notificationController.dart';
 import 'package:milleservices/controllers/prestationsController.dart';
 import 'package:milleservices/models/prestation.dart';
 import 'package:milleservices/providers/userProvider.dart';
-import 'package:milleservices/screens/deroulement_prestation.dart';
+import 'package:milleservices/navigation/app_navigation.dart';
+import 'package:go_router/go_router.dart';
 import 'package:milleservices/services/fcm_debug_log.dart';
 import 'package:milleservices/services/push_local_notifications.dart';
 import 'package:milleservices/services/navigation.dart';
@@ -815,8 +816,8 @@ class NotificationService {
           ? data['route'] as String
           : null;
       if (route != null && route.isNotEmpty) {
-        fcmAppLog('AFFICHAGE', 'navigation pushNamed route=$route');
-        Navigator.of(ctx).pushNamed(route, arguments: data);
+        fcmAppLog('AFFICHAGE', 'navigation go_router push route=$route');
+        ctx.push(route, extra: data);
         return;
       }
 
@@ -852,11 +853,13 @@ class NotificationService {
             final map = Map<String, dynamic>.from(res.data as Map);
             final prestation = Prestation.fromJson(map);
             fcmAppLog('AFFICHAGE', 'navigation DeroulementPrestation id=$prestationId type=$type');
-            Navigator.of(ctx).push(
-              MaterialPageRoute<void>(
-                builder: (_) => DeroulementPrestation(prestation: prestation),
-              ),
-            );
+            final role =
+                userProvider.user?.role?.toString().toUpperCase() ?? '';
+            if (role == 'PARTICULIER') {
+              AppNavigation.pushParticulierPrestation(ctx, prestation);
+            } else {
+              AppNavigation.pushPrestatairePrestation(ctx, prestation);
+            }
             return;
           }
         }

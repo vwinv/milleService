@@ -7,7 +7,10 @@ import 'package:flutter_spinkit/flutter_spinkit.dart';
 import 'package:milleservices/controllers/authController.dart';
 import 'package:milleservices/controllers/prestatairesController.dart';
 import 'package:milleservices/providers/userProvider.dart';
-import 'package:milleservices/screens/welcome.dart';
+import 'package:milleservices/navigation/app_navigation.dart';
+import 'package:milleservices/router/app_routes.dart';
+import 'package:go_router/go_router.dart';
+import 'package:milleservices/services/document_picker_helper.dart';
 import 'package:milleservices/services/pick_file_name.dart';
 import 'package:milleservices/services/sizeConfig.dart';
 import 'package:milleservices/services/utilities.dart';
@@ -54,11 +57,7 @@ class _PrestataireValidateProfilState extends State<PrestataireValidateProfil> {
       });
 
       if (statut == 'REFUSE' || hasRefusedDoc) {
-        Navigator.of(context).pushReplacement(
-          MaterialPageRoute<void>(
-            builder: (_) => const PrestataireDocumentsRefuses(),
-          ),
-        );
+        context.go(AppRoutes.prestataireDocumentsRefused);
         return;
       }
     }
@@ -208,11 +207,7 @@ class _PrestataireDocumentsRefusesState
             onPressed: () async {
               await context.read<UserProvider>().logout();
               if (!context.mounted) return;
-              Navigator.pushAndRemoveUntil(
-                context,
-                MaterialPageRoute(builder: (context) => const Welcome()),
-                (route) => false,
-              );
+              AppNavigation.goWelcome(context);
             },
           ),
         ],
@@ -503,14 +498,13 @@ class _PrestataireDocumentsRefusesState
   }
 
   Future<void> _pickFileFor(String typeCode, bool isPdf) async {
-    final result = await FilePicker.platform.pickFiles(
-      type: FileType.custom,
-      allowedExtensions: const ['pdf', 'jpg', 'jpeg', 'png'],
-      withData: true,
+    final file = await DocumentPickerHelper.pickDocument(
+      context,
+      allowPdf: isPdf,
     );
-    if (!mounted || result == null || result.files.isEmpty) return;
+    if (!mounted || file == null) return;
     setState(() {
-      _files[typeCode] = result.files.first;
+      _files[typeCode] = file;
     });
   }
 
@@ -604,11 +598,7 @@ class _PrestataireDocumentsRefusesState
 
       if (res.success == true) {
         Utilities().showMesage(context, 'success', 'validate_docs_sent'.tr());
-        Navigator.of(context).pushReplacement(
-          MaterialPageRoute<void>(
-            builder: (_) => const PrestataireValidateProfil(),
-          ),
-        );
+        context.go(AppRoutes.prestataireValidation);
       } else {
         final msg = (res.message?.toString().trim().isNotEmpty ?? false)
             ? res.message
@@ -634,8 +624,11 @@ class _PrestataireDocumentsRefusesState
     if (code.contains('cni') || code.contains('passport')) {
       return 'validate_doc_cni'.tr();
     }
-    if (code.contains('casier') || code.contains('certificat')) {
-      return 'validate_doc_casier'.tr();
+    if (code.contains('residence')) {
+      return 'validate_doc_residence'.tr();
+    }
+    if (code.contains('diplome')) {
+      return 'validate_doc_diplome'.tr();
     }
     return libelle?.isNotEmpty == true ? libelle! : 'validate_doc_default'.tr();
   }
@@ -646,8 +639,8 @@ class _PrestataireDocumentsRefusesState
 
   bool _isPdfDoc(Map<String, dynamic> doc) {
     final code = (doc['typeCode'] ?? '').toString().toLowerCase();
-    return code.contains('casier') ||
-        code.contains('certificat') ||
+    return code.contains('residence') ||
+        code.contains('diplome') ||
         code.contains('pdf');
   }
 }

@@ -9,7 +9,7 @@ import 'package:provider/provider.dart';
 import 'package:milleservices/models/offre.dart';
 import 'package:milleservices/providers/settings_provider.dart';
 import 'package:milleservices/providers/userProvider.dart';
-import 'package:milleservices/services/home_resolver.dart';
+import 'package:milleservices/navigation/app_navigation.dart';
 import 'package:milleservices/services/utilities.dart';
 import 'package:milleservices/services/sizeConfig.dart';
 import 'package:milleservices/widgets/paiement_soft_pay_sheet.dart';
@@ -254,12 +254,7 @@ class _HomeAbonnementState extends State<HomeAbonnement> {
         namedArgs: {'libelle': selected.libelle ?? ''},
       ),
     );
-    Navigator.of(context).pushReplacement(
-      MaterialPageRoute<void>(
-        builder: (_) =>
-            resolveHome(settings: settings, userProvider: userProvider),
-      ),
-    );
+    AppNavigation.goHome(context);
   }
 
   @override
@@ -283,11 +278,7 @@ class _HomeAbonnementState extends State<HomeAbonnement> {
             onPressed: () async {
               await context.read<UserProvider>().logout();
               if (!context.mounted) return;
-              Navigator.pushAndRemoveUntil(
-                context,
-                MaterialPageRoute(builder: (context) => const Welcome()),
-                (route) => false,
-              );
+              AppNavigation.goWelcome(context);
             },
           ),
         ],

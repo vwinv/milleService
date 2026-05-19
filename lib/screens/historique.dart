@@ -2,8 +2,7 @@ import 'package:easy_localization/easy_localization.dart';
 import 'package:flutter/material.dart';
 import 'package:milleservices/models/prestation.dart';
 import 'package:milleservices/providers/userProvider.dart';
-import 'package:milleservices/screens/deroulement_prestation.dart';
-import 'package:milleservices/screens/prestataire/prestataire_confirm_prestation.dart';
+import 'package:milleservices/navigation/app_navigation.dart';
 import 'package:milleservices/services/sizeConfig.dart';
 import 'package:milleservices/services/utilities.dart';
 import 'package:provider/provider.dart';
@@ -82,12 +81,7 @@ class Historique extends StatelessWidget {
 
     return GestureDetector(
       onTap: () {
-        Navigator.push(
-          context,
-          MaterialPageRoute(
-            builder: (context) => DeroulementPrestation(prestation: p),
-          ),
-        );
+        AppNavigation.pushParticulierPrestation(context, p);
       },
       child: Container(
         padding: EdgeInsets.symmetric(
@@ -196,24 +190,14 @@ class Historique extends StatelessWidget {
       child: InkWell(
         onTap: () {
           if (p.isEnAttente) {
-            Navigator.push(
-              context,
-              MaterialPageRoute(
-                builder: (context) =>
-                    PrestataireConfirmPrestation(prestation: p),
-              ),
-            ).then((value) {
+            AppNavigation.pushPrestataireConfirmPrestation<bool>(context, p)
+                .then((value) {
               if (value == true && context.mounted) {
-                Navigator.pop(context, true);
+                AppNavigation.pop(context, true);
               }
             });
           } else {
-            Navigator.push(
-              context,
-              MaterialPageRoute(
-                builder: (context) => DeroulementPrestation(prestation: p),
-              ),
-            );
+            AppNavigation.pushPrestatairePrestation(context, p);
           }
         },
         borderRadius: BorderRadius.circular(SizeConfig.blockSizeHorizontal * 4),

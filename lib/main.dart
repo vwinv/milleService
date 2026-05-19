@@ -11,18 +11,12 @@ import 'package:milleservices/providers/prestationsProvider.dart';
 import 'package:milleservices/providers/home_content_provider.dart';
 import 'package:provider/provider.dart';
 import 'package:milleservices/providers/settings_provider.dart';
-import 'package:milleservices/screens/welcome.dart';
-import 'package:milleservices/screens/particulier/home_particulier.dart';
-import 'package:milleservices/services/sizeConfig.dart';
+import 'package:milleservices/app/app_root.dart';
 import 'package:milleservices/services/fcm_background_handler.dart';
 import 'package:milleservices/services/fcm_debug_log.dart';
-import 'package:milleservices/services/navigation.dart';
-import 'package:milleservices/services/notificationService.dart';
-import 'package:milleservices/services/home_resolver.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
-  // Force-disable visual debug overlays (baselines/paint guides) in app runtime.
   assert(() {
     debugPaintBaselinesEnabled = false;
     debugPaintSizeEnabled = false;
@@ -53,154 +47,34 @@ Future<void> main() async {
   }
 
   runApp(
-    EasyLocalization(
-      supportedLocales: const [Locale('fr'), Locale('en')],
-      path: 'assets/langues',
-      fallbackLocale: const Locale('fr'),
-      useOnlyLangCode: true,
-
-      /// Même clé que [SettingsProvider] : au redémarrage / après déconnexion, pas de retour à la langue système.
+    buildMilleServicesApp(
+      child: const AppRoot(),
       startLocale: easyStartLocale,
-      saveLocale: false,
-      child: MultiProvider(
-        providers: [
-          ChangeNotifierProvider(create: (_) => SettingsProvider()),
-          ChangeNotifierProvider(create: (_) => UserProvider()),
-          ChangeNotifierProvider(create: (_) => PrestatairesProvider()),
-          ChangeNotifierProvider(create: (_) => PrestationsProvider()),
-        ],
-        child: const MyApp(),
-      ),
     ),
   );
 }
 
-class MyApp extends StatefulWidget {
-  const MyApp({super.key});
-
-  @override
-  State<MyApp> createState() => _MyAppState();
-}
-
-class _MyAppState extends State<MyApp> {
-  SettingsProvider? _settings;
-
-  @override
-  void didChangeDependencies() {
-    super.didChangeDependencies();
-    final sp = context.read<SettingsProvider>();
-    if (!identical(_settings, sp)) {
-      _settings?.removeListener(_syncEasyLocaleWithSettings);
-      _settings = sp;
-      _settings!.addListener(_syncEasyLocaleWithSettings);
-      _syncEasyLocaleWithSettings();
-    }
-  }
-
-  @override
-  void dispose() {
-    _settings?.removeListener(_syncEasyLocaleWithSettings);
-    super.dispose();
-  }
-
-  /// Ne pas appeler EasyLocalization depuis le [build] (risque « wrong build scope »).
-  void _syncEasyLocaleWithSettings() {
-    if (!mounted) return;
-    final sp = _settings;
-    if (sp == null || !sp.isLoaded) return;
-    final desired = sp.locale;
-    if (desired == null) return;
-    if (!context.mounted || context.locale == desired) return;
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (!mounted || !context.mounted) return;
-      if (context.locale == desired) return;
-      context.setLocale(desired);
-    });
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return Consumer<SettingsProvider>(
-      builder: (context, settingsProvider, _) {
-        return MaterialApp(
-          title: 'Mille Services',
-          theme: ThemeData(
-            colorScheme: ColorScheme.fromSeed(seedColor: Colors.deepPurple),
-          ),
-          navigatorKey: NavigationService.navigatorKey,
-          localizationsDelegates:
-              context.localizationDelegates, // ✅ EasyLocalization
-          supportedLocales: context.supportedLocales, // ✅ EasyLocalization
-          locale: settingsProvider.locale ?? context.locale,
-          builder: (context, child) =>
-              WithForegroundTask(child: child ?? const SizedBox.shrink()),
-          home: const MyHomePage(title: 'Mille Services'),
-        );
-      },
-    );
-  }
-}
-
-class MyHomePage extends StatefulWidget {
-  const MyHomePage({super.key, required this.title});
-
-  // This widget is the home page of your application. It is stateful, meaning
-  // that it has a State object (defined below) that contains fields that affect
-  // how it looks.
-
-  // This class is the configuration for the state. It holds the values (in this
-  // case the title) provided by the parent (in this case the App widget) and
-  // used by the build method of the State. Fields in a Widget subclass are
-  // always marked "final".
-
-  final String title;
-
-  @override
-  State<MyHomePage> createState() => _MyHomePageState();
-}
-
-class _MyHomePageState extends State<MyHomePage> {
-  bool _notificationsInitialized = false;
-
-  @override
-  Widget build(BuildContext context) {
-    SizeConfig().init(context);
-    return Consumer2<UserProvider, SettingsProvider>(
-      builder: (context, userProvider, settings, _) {
-        if (!userProvider.initialLoadDone || !settings.isLoaded) {
-          return const Scaffold(
-            body: Center(child: CircularProgressIndicator()),
-          );
-        }
-        if (userProvider.isAuthenticated && userProvider.user != null) {
-          if (!_notificationsInitialized) {
-            _notificationsInitialized = true;
-            // Permissions + listeners onMessage + enregistrement token backend
-            WidgetsBinding.instance.addPostFrameCallback((_) {
-              fcmAppLog(
-                'CONFIG',
-                'MyHomePage → initializeWithContext (utilisateur connecté)',
-              );
-              NotificationService().initializeWithContext(context);
-            });
-          }
-          final role = userProvider.user!.role?.toString().toUpperCase() ?? '';
-          if (role == 'PARTICULIER') {
-            // Particulier : garder le comportement existant (HomeParticulier).
-            return ChangeNotifierProvider(
-              create: (_) => HomeContentProvider(),
-              child: const HomeParticulier(),
-            );
-          }
-          // Prestataire : [resolveHome] attend d'abord refreshVerificationStatus
-          // puis choisit l'écran (documents / validation / abonnement / home).
-          return resolveHome(
-            settings: settings,
-            userProvider: userProvider,
-          );
-        }
-        return const Welcome();
-      },
-    );
-  }
+/// Arbre racine (providers + localisation). Réutilisé par les tests widget.
+Widget buildMilleServicesApp({
+  required Widget child,
+  Locale? startLocale,
+}) {
+  return EasyLocalization(
+    supportedLocales: const [Locale('fr'), Locale('en')],
+    path: 'assets/langues',
+    fallbackLocale: const Locale('fr'),
+    useOnlyLangCode: true,
+    startLocale: startLocale,
+    saveLocale: false,
+    child: MultiProvider(
+      providers: [
+        ChangeNotifierProvider(create: (_) => SettingsProvider()),
+        ChangeNotifierProvider(create: (_) => UserProvider()),
+        ChangeNotifierProvider(create: (_) => PrestatairesProvider()),
+        ChangeNotifierProvider(create: (_) => PrestationsProvider()),
+        ChangeNotifierProvider(create: (_) => HomeContentProvider()),
+      ],
+      child: child,
+    ),
+  );
 }

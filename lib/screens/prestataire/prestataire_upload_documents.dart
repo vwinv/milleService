@@ -1,12 +1,16 @@
 import 'dart:math' as math;
 
+import 'package:easy_localization/easy_localization.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
+import 'package:go_router/go_router.dart';
 import 'package:milleservices/controllers/authController.dart';
 import 'package:milleservices/controllers/prestatairesController.dart';
 import 'package:milleservices/providers/userProvider.dart';
 import 'package:milleservices/screens/prestataire/prestataire_validate_profil.dart';
-import 'package:milleservices/screens/welcome.dart';
+import 'package:milleservices/navigation/app_navigation.dart';
+import 'package:milleservices/router/app_routes.dart';
+import 'package:milleservices/services/document_picker_helper.dart';
 import 'package:milleservices/services/pick_file_name.dart';
 import 'package:milleservices/services/sizeConfig.dart';
 import 'package:milleservices/services/utilities.dart';
@@ -28,11 +32,11 @@ class _PrestataireUploadDocumentsState
   static const _requiredDocs = <Map<String, String>>[
     {'typeCode': 'cni_recto', 'label': 'CNI / Passeport (recto)'},
     {'typeCode': 'cni_verso', 'label': 'CNI / Passeport (verso)'},
-    {'typeCode': 'casier_judiciaire', 'label': 'Casier judiciaire'},
     {
-      'typeCode': 'certificat_bonne_moeurs',
-      'label': 'Certificat de bonne mœurs',
+      'typeCode': 'certificat_residence',
+      'label': 'Certificat de résidence',
     },
+    {'typeCode': 'diplome', 'label': 'Diplôme'},
   ];
 
   @override
@@ -60,11 +64,7 @@ class _PrestataireUploadDocumentsState
             onPressed: () async {
               await context.read<UserProvider>().logout();
               if (!context.mounted) return;
-              Navigator.pushAndRemoveUntil(
-                context,
-                MaterialPageRoute(builder: (context) => const Welcome()),
-                (route) => false,
-              );
+              AppNavigation.goWelcome(context);
             },
           ),
         ],
@@ -190,7 +190,7 @@ class _PrestataireUploadDocumentsState
                       SizedBox(
                         width: SizeConfig.blockSizeHorizontal * 45,
                         child: Text(
-                          file?.name ?? 'Choisir un fichier (PDF/JPG/PNG)',
+                          file?.name ?? 'doc_pick_hint'.tr(),
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,
                           style: TextStyle(
@@ -225,14 +225,10 @@ class _PrestataireUploadDocumentsState
   }
 
   Future<void> _pickFileFor(String typeCode) async {
-    final result = await FilePicker.platform.pickFiles(
-      type: FileType.custom,
-      allowedExtensions: const ['pdf', 'jpg', 'jpeg', 'png'],
-      withData: true,
-    );
-    if (!mounted || result == null || result.files.isEmpty) return;
+    final file = await DocumentPickerHelper.pickDocument(context);
+    if (!mounted || file == null) return;
     setState(() {
-      _files[typeCode] = result.files.first;
+      _files[typeCode] = file;
     });
   }
 
@@ -296,11 +292,7 @@ class _PrestataireUploadDocumentsState
           'success',
           'Documents envoyés. Vérification en cours.',
         );
-        Navigator.of(context).pushReplacement(
-          MaterialPageRoute<void>(
-            builder: (_) => const PrestataireValidateProfil(),
-          ),
-        );
+        context.go(AppRoutes.prestataireValidation);
       } else {
         Utilities().showMesage(
           context,
