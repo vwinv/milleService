@@ -10,6 +10,7 @@ import 'package:milleservices/providers/prestatairesProvider.dart';
 import 'package:milleservices/providers/prestationsProvider.dart';
 import 'package:milleservices/providers/home_content_provider.dart';
 import 'package:provider/provider.dart';
+import 'package:milleservices/providers/auth_resume_provider.dart';
 import 'package:milleservices/providers/settings_provider.dart';
 import 'package:milleservices/app/app_root.dart';
 import 'package:milleservices/services/fcm_background_handler.dart';
@@ -69,6 +70,7 @@ Widget buildMilleServicesApp({
     child: MultiProvider(
       providers: [
         ChangeNotifierProvider(create: (_) => SettingsProvider()),
+        ChangeNotifierProvider(create: (_) => AuthResumeProvider()),
         ChangeNotifierProvider(create: (_) => UserProvider()),
         ChangeNotifierProvider(create: (_) => PrestatairesProvider()),
         ChangeNotifierProvider(create: (_) => PrestationsProvider()),

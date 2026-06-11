@@ -2,6 +2,7 @@ import 'package:flutter/foundation.dart';
 import 'dart:math' as math;
 import 'package:milleservices/controllers/geocodingController.dart';
 import 'package:milleservices/controllers/prestatairesController.dart';
+import 'package:easy_localization/easy_localization.dart';
 import 'package:milleservices/services/device_location_service.dart';
 import 'package:milleservices/services/utilities.dart';
 import 'package:milleservices/models/avis_client.dart';
@@ -248,18 +249,43 @@ class PrestatairesProvider extends ChangeNotifier {
         baseLng = byAddress.lng;
       }
     }
+    final isGuest =
+        !userProvider.isAuthenticated ||
+        userProvider.token == null ||
+        userProvider.token!.isEmpty;
+
+    double? apiLat = gpsLat;
+    double? apiLng = gpsLng;
+    if (isGuest) {
+      apiLat = lat ?? gpsLat;
+      apiLng = lng ?? gpsLng;
+      if (apiLat == null || apiLng == null) {
+        final device = await DeviceLocationService.getCurrentLatLngOrNull();
+        if (device != null) {
+          apiLat = device.latitude;
+          apiLng = device.longitude;
+        }
+      }
+      if (apiLat == null || apiLng == null) {
+        _favoris = [];
+        _favorisListeProximite = false;
+        _error = null;
+        return;
+      }
+    }
+
     try {
       var result = await _controller.getFavoris(
-        lat: gpsLat,
-        lng: gpsLng,
+        lat: apiLat,
+        lng: apiLng,
         token: userProvider.token,
       );
 
-      if (result.status == 401) {
+      if (result.status == 401 && !isGuest) {
         await userProvider.refreshToken();
         result = await _controller.getFavoris(
-          lat: gpsLat,
-          lng: gpsLng,
+          lat: apiLat,
+          lng: apiLng,
           token: userProvider.token,
         );
       }
@@ -345,26 +371,48 @@ class PrestatairesProvider extends ChangeNotifier {
       }
     }
 
+    final isGuest =
+        !userProvider.isAuthenticated ||
+        userProvider.token == null ||
+        userProvider.token!.isEmpty;
+
+    double? apiLat = searchLat;
+    double? apiLng = searchLng;
+    if (isGuest) {
+      if (apiLat == null || apiLng == null) {
+        final device = await DeviceLocationService.getCurrentLatLngOrNull();
+        if (device != null) {
+          apiLat = device.latitude;
+          apiLng = device.longitude;
+        }
+      }
+      if (apiLat == null || apiLng == null) {
+        _searchError = 'search_need_location'.tr();
+        _searchLoading = false;
+        notifyListeners();
+        return;
+      }
+    }
+
     var result = await _controller.searchPrestataires(
       serviceId: serviceId,
       tarifMin: tarifMin,
       tarifMax: tarifMax,
       date: date,
-      lat: searchLat,
-      lng: searchLng,
+      lat: apiLat,
+      lng: apiLng,
       token: userProvider.token,
     );
 
-    print(result);
-    if (result.status == 401) {
+    if (result.status == 401 && !isGuest) {
       await userProvider.refreshToken();
       result = await _controller.searchPrestataires(
         serviceId: serviceId,
         tarifMin: tarifMin,
         tarifMax: tarifMax,
         date: date,
-        lat: searchLat,
-        lng: searchLng,
+        lat: apiLat,
+        lng: apiLng,
         token: userProvider.token,
       );
     }

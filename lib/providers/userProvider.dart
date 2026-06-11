@@ -1,4 +1,7 @@
+import 'dart:async';
+
 import 'package:flutter/foundation.dart';
+import 'package:flutter/scheduler.dart';
 import 'package:milleservices/controllers/authController.dart';
 import 'package:milleservices/controllers/prestatairesController.dart';
 import 'package:milleservices/controllers/userController.dart';
@@ -25,6 +28,14 @@ class UserProvider extends ChangeNotifier {
 
   Abonnement? _abonnement;
   Abonnement? get abonnement => _abonnement;
+
+  bool _abonnementExpiredFlag = false;
+  bool get abonnementExpiredFlag => _abonnementExpiredFlag;
+
+  bool get hasAbonnementValide => _abonnement?.isValide ?? false;
+
+  bool get isPrestataire =>
+      _user?.role?.toString().toUpperCase() == 'PRESTATAIRE';
 
   /// URL de la photo de profil mise à jour côté client (après upload).
   String? _avatarUrlOverride;
@@ -55,6 +66,28 @@ class UserProvider extends ChangeNotifier {
 
   UserProvider() {
     loadUser();
+  }
+
+  Future<void> _purgeInvalidAbonnementCache() async {
+    if (_abonnement == null || _abonnement!.isValide) return;
+    _abonnementExpiredFlag = true;
+    _abonnement = null;
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.remove("abonnement");
+    notifyListeners();
+  }
+
+  void _applyAbonnementState(Abonnement? abonnement) {
+    _abonnement = abonnement;
+    if (abonnement?.isValide == true) {
+      _abonnementExpiredFlag = false;
+    }
+  }
+
+  /// Resynchronise l'abonnement prestataire depuis l'API (réabonnement / cache obsolète).
+  Future<void> syncPrestataireAbonnementIfNeeded() async {
+    if (!isPrestataire || _token == null || _token!.isEmpty) return;
+    await refreshAbonnementCourant();
   }
 
   /// Rafraîchit le statut de vérification du prestataire connecté
@@ -138,7 +171,9 @@ class UserProvider extends ChangeNotifier {
       final payload = data.data ?? {};
       _user = User.fromJson(payload['user']);
       final aboJson = payload['abonnement'];
-      _abonnement = aboJson != null ? Abonnement.fromJson(aboJson) : null;
+      _applyAbonnementState(
+        aboJson != null ? Abonnement.fromJson(aboJson) : null,
+      );
       _token = payload['access_token'];
       _Rtoken = payload['refresh_token'];
 
@@ -148,10 +183,10 @@ class UserProvider extends ChangeNotifier {
       await prefs.setString("token", _token!);
       await prefs.setString("Rtoken", _Rtoken!);
       await prefs.setString("user", User.encode(user!));
-      if (_abonnement != null) {
-        await prefs.setString("abonnement", Abonnement.encode(_abonnement!));
-      } else {
-        await prefs.remove("abonnement");
+      await _persistAbonnementCache(prefs);
+      await _purgeInvalidAbonnementCache();
+      if (isPrestataire) {
+        await syncPrestataireAbonnementIfNeeded();
       }
       await LiveLocationForegroundService.startIfAuthenticated(_user, _token);
     }
@@ -179,7 +214,9 @@ class UserProvider extends ChangeNotifier {
         final payload = data.data ?? {};
         _user = User.fromJson(payload['user']);
         final aboJson = payload['abonnement'];
-        _abonnement = aboJson != null ? Abonnement.fromJson(aboJson) : null;
+        _applyAbonnementState(
+          aboJson != null ? Abonnement.fromJson(aboJson) : null,
+        );
         _token = payload['access_token'];
         _Rtoken = payload['refresh_token'];
 
@@ -189,10 +226,10 @@ class UserProvider extends ChangeNotifier {
         await prefs.setString("user", User.encode(user!));
         await prefs.setString("token", _token!);
         await prefs.setString("Rtoken", _Rtoken!);
-        if (_abonnement != null) {
-          await prefs.setString("abonnement", Abonnement.encode(_abonnement!));
-        } else {
-          await prefs.remove("abonnement");
+        await _persistAbonnementCache(prefs);
+        await _purgeInvalidAbonnementCache();
+        if (isPrestataire) {
+          await syncPrestataireAbonnementIfNeeded();
         }
         await LiveLocationForegroundService.startIfAuthenticated(_user, _token);
       }
@@ -217,6 +254,14 @@ class UserProvider extends ChangeNotifier {
     return data;
   }
 
+  Future<void> _persistAbonnementCache(SharedPreferences prefs) async {
+    if (_abonnement != null && _abonnement!.isValide) {
+      await prefs.setString("abonnement", Abonnement.encode(_abonnement!));
+    } else {
+      await prefs.remove("abonnement");
+    }
+  }
+
   Future<void> loadUser() async {
     final prefs = await SharedPreferences.getInstance();
     _token = prefs.getString("token");
@@ -224,10 +269,18 @@ class UserProvider extends ChangeNotifier {
     final usr = prefs.getString("user");
     _user = usr == null ? null : User.decode(usr);
     final aboStr = prefs.getString("abonnement");
-    _abonnement = aboStr == null ? null : Abonnement.decode(aboStr);
+    _applyAbonnementState(
+      aboStr == null ? null : Abonnement.decode(aboStr),
+    );
     _avatarUrlOverride = prefs.getString("avatarUrl");
+    await _purgeInvalidAbonnementCache();
     _initialLoadDone = true;
     notifyListeners();
+    if (isPrestataire && _token != null && _token!.isNotEmpty) {
+      SchedulerBinding.instance.addPostFrameCallback((_) {
+        unawaited(syncPrestataireAbonnementIfNeeded());
+      });
+    }
     await LiveLocationForegroundService.startIfAuthenticated(_user, _token);
   }
 
@@ -306,6 +359,7 @@ class UserProvider extends ChangeNotifier {
     _user = null;
     _Rtoken = null;
     _abonnement = null;
+    _abonnementExpiredFlag = false;
     _avatarUrlOverride = null;
     notifyListeners();
 
@@ -372,12 +426,11 @@ class UserProvider extends ChangeNotifier {
           await prefs.setString("user", User.encode(_user!));
         }
         final aboJson = payload['abonnement'];
-        _abonnement = aboJson != null ? Abonnement.fromJson(aboJson) : null;
-        if (_abonnement != null) {
-          await prefs.setString("abonnement", Abonnement.encode(_abonnement!));
-        } else {
-          await prefs.remove("abonnement");
-        }
+        _applyAbonnementState(
+          aboJson != null ? Abonnement.fromJson(aboJson) : null,
+        );
+        await _persistAbonnementCache(prefs);
+        await _purgeInvalidAbonnementCache();
         notifyListeners();
         print('UserProvider: Token rafraîchi avec succès');
       } else {
@@ -424,12 +477,10 @@ class UserProvider extends ChangeNotifier {
         }
       }
       if (data.success == true && data.data != null) {
-        final aboJson = data.data;
-        _abonnement = Abonnement.fromJson(aboJson);
+        _applyAbonnementState(Abonnement.fromJson(data.data));
         notifyListeners();
-
         final prefs = await SharedPreferences.getInstance();
-        await prefs.setString("abonnement", Abonnement.encode(_abonnement!));
+        await _persistAbonnementCache(prefs);
       }
       return data;
     } finally {
@@ -457,15 +508,15 @@ class UserProvider extends ChangeNotifier {
   /// Applique le JSON « abonnement courant » (ex. renvoyé avec invoice-paid) sans second GET.
   Future<void> applyAbonnementCourantPayload(dynamic payload) async {
     if (payload == null) {
-      _abonnement = null;
+      _applyAbonnementState(null);
       final prefs = await SharedPreferences.getInstance();
       await prefs.remove("abonnement");
       notifyListeners();
       return;
     }
-    _abonnement = Abonnement.fromJson(payload);
+    _applyAbonnementState(Abonnement.fromJson(payload));
     final prefs = await SharedPreferences.getInstance();
-    await prefs.setString("abonnement", Abonnement.encode(_abonnement!));
+    await _persistAbonnementCache(prefs);
     notifyListeners();
   }
 
@@ -481,14 +532,15 @@ class UserProvider extends ChangeNotifier {
     }
     if (res.success == true) {
       if (res.data != null) {
-        _abonnement = Abonnement.fromJson(res.data);
-        final prefs = await SharedPreferences.getInstance();
-        await prefs.setString("abonnement", Abonnement.encode(_abonnement!));
+        _applyAbonnementState(Abonnement.fromJson(res.data));
       } else {
-        _abonnement = null;
-        final prefs = await SharedPreferences.getInstance();
-        await prefs.remove("abonnement");
+        if (_abonnement != null) {
+          _abonnementExpiredFlag = true;
+        }
+        _applyAbonnementState(null);
       }
+      final prefs = await SharedPreferences.getInstance();
+      await _persistAbonnementCache(prefs);
       notifyListeners();
     }
   }
@@ -750,7 +802,9 @@ class UserProvider extends ChangeNotifier {
         final payload = data.data as Map<String, dynamic>;
         _user = User.fromJson(payload['user']);
         final aboJson = payload['abonnement'];
-        _abonnement = aboJson != null ? Abonnement.fromJson(aboJson) : null;
+        _applyAbonnementState(
+          aboJson != null ? Abonnement.fromJson(aboJson) : null,
+        );
         _token = payload['access_token'];
         _Rtoken = payload['refresh_token'];
 
@@ -760,11 +814,8 @@ class UserProvider extends ChangeNotifier {
         await prefs.setString("token", _token!);
         await prefs.setString("Rtoken", _Rtoken!);
         await prefs.setString("user", User.encode(_user!));
-        if (_abonnement != null) {
-          await prefs.setString("abonnement", Abonnement.encode(_abonnement!));
-        } else {
-          await prefs.remove("abonnement");
-        }
+        await _persistAbonnementCache(prefs);
+        await _purgeInvalidAbonnementCache();
         await LiveLocationForegroundService.startIfAuthenticated(_user, _token);
       }
 

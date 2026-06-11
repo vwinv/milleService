@@ -55,34 +55,10 @@ class _WelcomeState extends State<Welcome> {
                       horizontal: SizeConfig.blockSizeHorizontal * 10,
                     ),
                     child: CustomButton(
-                      onTap: () => AppNavigation.goLogin(context),
+                      onTap: () => AppNavigation.goChooseProfile(context),
                       title: Center(
                         child: Text(
-                          "login".tr(),
-                          style: TextStyle(
-                            color: Colors.white,
-                            fontSize: SizeConfig.blockSizeHorizontal * 4,
-                            fontWeight: FontWeight.bold,
-                          ),
-                        ),
-                      ),
-                      color: Colors.white.withOpacity(0.56),
-                      borderColor: Colors.white,
-                      width: SizeConfig.blockSizeHorizontal * 90,
-                      height: SizeConfig.blockSizeVertical * 6,
-                      borderRadius: SizeConfig.blockSizeHorizontal * 10,
-                    ),
-                  ),
-                  Padding(
-                    padding: EdgeInsets.symmetric(
-                      vertical: SizeConfig.blockSizeVertical * 1,
-                      horizontal: SizeConfig.blockSizeHorizontal * 10,
-                    ),
-                    child: CustomButton(
-                      onTap: () => AppNavigation.goSignUp(context),
-                      title: Center(
-                        child: Text(
-                          "signup".tr(),
+                          'welcome_start'.tr(),
                           style: TextStyle(
                             color: Colors.white,
                             fontSize: SizeConfig.blockSizeHorizontal * 4,

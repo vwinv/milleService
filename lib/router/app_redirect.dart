@@ -1,14 +1,20 @@
+import 'package:milleservices/providers/auth_resume_provider.dart';
 import 'package:milleservices/providers/settings_provider.dart';
 import 'package:milleservices/providers/userProvider.dart';
 import 'package:milleservices/router/app_routes.dart';
+import 'package:milleservices/services/app_bootstrap.dart';
 
 /// Redirect central (auth, langue, onboarding prestataire).
 String? resolveAppRedirect({
   required UserProvider userProvider,
   required SettingsProvider settingsProvider,
+  required AuthResumeProvider authResumeProvider,
+  required AppBootstrapNotifier appBootstrap,
   required String matchedLocation,
 }) {
-  if (!userProvider.initialLoadDone || !settingsProvider.isLoaded) {
+  if (!userProvider.initialLoadDone ||
+      !settingsProvider.isLoaded ||
+      !appBootstrap.minSplashElapsed) {
     return matchedLocation == AppRoutes.loading ? null : AppRoutes.loading;
   }
 
@@ -16,15 +22,28 @@ String? resolveAppRedirect({
       userProvider.isAuthenticated && userProvider.user != null;
 
   if (!authenticated) {
-    if (AppRoutes.isPublicPath(matchedLocation) &&
+    if (settingsProvider.guestOnboardingDone &&
+        settingsProvider.locale == null) {
+      if (matchedLocation == AppRoutes.settings) {
+        return null;
+      }
+      return AppRoutes.settings;
+    }
+    if (AppRoutes.isGuestAccessiblePath(matchedLocation) &&
         matchedLocation != AppRoutes.loading) {
       return null;
+    }
+    if (settingsProvider.guestOnboardingDone) {
+      return AppRoutes.particulierHome;
     }
     return AppRoutes.welcome;
   }
 
   if (settingsProvider.locale == null &&
       matchedLocation != AppRoutes.settings) {
+    if (AppRoutes.isParticulierConfirmPath(matchedLocation)) {
+      return null;
+    }
     return AppRoutes.settings;
   }
 
@@ -39,7 +58,8 @@ String? resolveAppRedirect({
       return target;
     }
     // Routes métier (prestations, wallet, historique) : ne pas forcer le shell.
-    if (AppRoutes.isAuthPath(matchedLocation) || matchedLocation == AppRoutes.loading) {
+    if (AppRoutes.isAuthPath(matchedLocation) ||
+        matchedLocation == AppRoutes.loading) {
       return target;
     }
     return null;
@@ -49,7 +69,11 @@ String? resolveAppRedirect({
     if (matchedLocation.startsWith('/prestataire')) {
       return AppRoutes.particulierHome;
     }
-    if (AppRoutes.isAuthPath(matchedLocation) || matchedLocation == AppRoutes.loading) {
+    if (AppRoutes.isAuthPath(matchedLocation) ||
+        matchedLocation == AppRoutes.loading) {
+      if (authResumeProvider.hasIntent) {
+        return null;
+      }
       return AppRoutes.particulierHome;
     }
     return null;
@@ -63,6 +87,12 @@ String homePathForUser({
   required SettingsProvider settingsProvider,
 }) {
   if (!userProvider.isAuthenticated || userProvider.user == null) {
+    if (settingsProvider.guestOnboardingDone) {
+      if (settingsProvider.locale == null) {
+        return AppRoutes.settings;
+      }
+      return AppRoutes.particulierHome;
+    }
     return AppRoutes.welcome;
   }
   if (settingsProvider.locale == null) {
@@ -90,7 +120,7 @@ String _prestataireShellPath(UserProvider userProvider) {
   if (statutVerif == 'REFUSE') {
     return AppRoutes.prestataireDocumentsRefused;
   }
-  if (userProvider.abonnement == null) {
+  if (!userProvider.hasAbonnementValide) {
     return AppRoutes.prestataireAbonnement;
   }
   return AppRoutes.prestataireHome;

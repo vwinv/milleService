@@ -19,8 +19,12 @@ import 'package:milleservices/widgets/auth_keyboard_aware_layout.dart';
 import 'package:milleservices/widgets/dashed_upload_zone.dart';
 import 'package:provider/provider.dart';
 
+enum SignUpRole { particulier, prestataire }
+
 class SignUp extends StatefulWidget {
-  const SignUp({super.key});
+  const SignUp({super.key, this.initialRole = SignUpRole.prestataire});
+
+  final SignUpRole initialRole;
 
   @override
   State<SignUp> createState() => _SignUpState();
@@ -76,7 +80,7 @@ class _SignUpState extends State<SignUp> with TickerProviderStateMixin {
   @override
   void initState() {
     super.initState();
-    tabController = TabController(length: 2, vsync: this);
+    tabController = TabController(length: 1, vsync: this);
     // Charger la liste des services prestataire une seule fois après le premier build.
     WidgetsBinding.instance.addPostFrameCallback((_) {
       final prestatairesProvider = Provider.of<PrestatairesProvider>(
@@ -102,19 +106,25 @@ class _SignUpState extends State<SignUp> with TickerProviderStateMixin {
     }
   }
 
+  String get _type => widget.initialRole == SignUpRole.particulier
+      ? 'particulier'
+      : 'prestataire';
+
+  String get _welcomeTitle => widget.initialRole == SignUpRole.prestataire
+      ? 'signup_welcome_prestataire_title'.tr()
+      : 'signup_welcome_particulier_title'.tr();
+
   @override
   Widget build(BuildContext context) {
     return AuthKeyboardAwareLayout(
       tabController: tabController!,
+      showTabs: false,
       taglineForYou: 'signup_tagline_for_you'.tr(),
       taglineFromHome: 'signup_tagline_from_home'.tr(),
-      welcomeTitle: 'signup_welcome_title'.tr(),
+      welcomeTitle: _welcomeTitle,
       tabParticulierLabel: 'signup_tab_particulier'.tr(),
       tabProfessionnelLabel: 'signup_tab_professionnel'.tr(),
-      tabViews: [
-        _buildForm('particulier'),
-        _buildForm('prestataire'),
-      ],
+      tabViews: [_buildForm(_type)],
     );
   }
 
@@ -242,7 +252,7 @@ class _SignUpState extends State<SignUp> with TickerProviderStateMixin {
             Utilities().showMesage(context, 'success', "signup_success".tr());
             // Navigation après inscription selon le type d'utilisateur
 
-          AppNavigation.goHome(context);
+          AppNavigation.continueAfterAuth(context);
           }
         } else {
           if (mounted) {
@@ -788,7 +798,11 @@ class _SignUpState extends State<SignUp> with TickerProviderStateMixin {
                 ),
                 GestureDetector(
                   onTap: () {
-                    AppNavigation.goLogin(context);
+                    if (type == 'particulier') {
+                      AppNavigation.goParticulierLogin(context);
+                    } else {
+                      AppNavigation.goPrestataireLogin(context);
+                    }
                   },
                   child: Text(
                     "signup_go_to_login".tr(),

@@ -21,9 +21,10 @@ void main() {
       ),
     );
     await tester.pump();
+    await tester.pump(const Duration(milliseconds: 800));
     await tester.pumpAndSettle();
 
     expect(find.byType(MaterialApp), findsOneWidget);
-    expect(find.text('login'.tr()), findsOneWidget);
+    expect(find.text('welcome_start'.tr()), findsOneWidget);
   });
 }

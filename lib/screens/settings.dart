@@ -17,17 +17,27 @@ class Settings extends StatefulWidget {
 }
 
 class _SettingsState extends State<Settings> {
-  late UserProvider userProvider;
-  String _selectedLanguage = 'fr'; // Français par défaut
+  UserProvider? _userProvider;
+  String _selectedLanguage = 'fr';
+  bool _languageInitialized = false;
 
   @override
-  void initState() {
-    super.initState();
-    userProvider = context.read<UserProvider>();
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    _userProvider ??= context.read<UserProvider>();
+    if (_languageInitialized) return;
+    _languageInitialized = true;
+    final saved = context.read<SettingsProvider>().selectedLocale?.languageCode;
+    if (saved != null && saved.isNotEmpty) {
+      _selectedLanguage = saved;
+    } else {
+      _selectedLanguage = deviceLanguagePreselection(context.locale);
+    }
   }
 
   @override
   Widget build(BuildContext context) {
+    SizeConfig().init(context);
     return Scaffold(
       backgroundColor: Colors.white,
       appBar: AppBar(
@@ -140,9 +150,17 @@ class _SettingsState extends State<Settings> {
 
   Future<void> _onCommencer() async {
     final settings = context.read<SettingsProvider>();
-    final userProvider = context.read<UserProvider>();
+    final userProvider = _userProvider ?? context.read<UserProvider>();
     await applyAppLanguage(context, settings, _selectedLanguage);
     if (!mounted) return;
-    AppNavigation.goHome(context);
+    final isGuest = !userProvider.isAuthenticated || userProvider.user == null;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      if (isGuest) {
+        AppNavigation.goParticulierHome(context);
+      } else {
+        AppNavigation.continueAfterAuth(context);
+      }
+    });
   }
 }

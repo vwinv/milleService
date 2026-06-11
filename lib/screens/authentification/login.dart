@@ -10,14 +10,20 @@ import 'package:milleservices/widgets/customButton.dart';
 import 'package:milleservices/widgets/customTextField.dart';
 import 'package:provider/provider.dart';
 
+enum LoginRole { particulier, prestataire }
+
 class Login extends StatefulWidget {
-  const Login({super.key});
+  const Login({super.key, required this.role});
+
+  final LoginRole role;
 
   @override
   State<Login> createState() => _LoginState();
 }
 
 class _LoginState extends State<Login> with TickerProviderStateMixin {
+  static const bool _showSocialLogin = false;
+
   TabController? tabController;
   final formParticulierKey = GlobalKey<FormState>();
   final formPrestataireKey = GlobalKey<FormState>();
@@ -31,8 +37,11 @@ class _LoginState extends State<Login> with TickerProviderStateMixin {
   @override
   void initState() {
     super.initState();
-    tabController = TabController(length: 2, vsync: this);
+    tabController = TabController(length: 1, vsync: this);
   }
+
+  String get _type =>
+      widget.role == LoginRole.particulier ? 'particulier' : 'prestataire';
 
   @override
   void dispose() {
@@ -42,17 +51,34 @@ class _LoginState extends State<Login> with TickerProviderStateMixin {
 
   @override
   Widget build(BuildContext context) {
+    SizeConfig().init(context);
     return AuthKeyboardAwareLayout(
       tabController: tabController!,
+      showTabs: false,
       taglineForYou: 'login_tagline_for_you'.tr(),
       taglineFromHome: 'login_tagline_from_home'.tr(),
-      welcomeTitle: 'login_welcome_title'.tr(),
+      welcomeTitle: 'login_welcome'.tr(),
       tabParticulierLabel: 'login_tab_particulier'.tr(),
       tabProfessionnelLabel: 'login_tab_professionnel'.tr(),
-      tabViews: [
-        _buildForm('particulier', context),
-        _buildForm('prestataire', context),
-      ],
+      tabViews: [_buildForm(_type, context)],
+      bottomBar: widget.role == LoginRole.particulier
+          ? SafeArea(
+              top: false,
+              child: TextButton(
+                onPressed: () => AppNavigation.closeParticulierLogin(context),
+                child: Text(
+                  'login_close'.tr(),
+                  style: TextStyle(
+                    color: Colors.red,
+                    fontSize: SizeConfig.fontSize(
+                      SizeConfig.blockSizeHorizontal * 4,
+                    ),
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+              ),
+            )
+          : null,
     );
   }
 
@@ -81,7 +107,7 @@ class _LoginState extends State<Login> with TickerProviderStateMixin {
       if (res.success == true) {
         if (mounted) {
           Utilities().showMesage(context, 'success', "login_success".tr());
-          AppNavigation.goHome(context);
+          AppNavigation.continueAfterAuth(context);
         }
       } else {
         if (mounted) {
@@ -262,7 +288,11 @@ class _LoginState extends State<Login> with TickerProviderStateMixin {
                 ),
                 GestureDetector(
                   onTap: () {
-                    AppNavigation.goSignUp(context);
+                    if (type == 'particulier') {
+                      AppNavigation.goParticulierSignUp(context);
+                    } else {
+                      AppNavigation.goPrestataireSignUp(context);
+                    }
                   },
                   child: Text(
                     "login_register_now".tr(),
@@ -275,98 +305,100 @@ class _LoginState extends State<Login> with TickerProviderStateMixin {
                 ),
               ],
             ),
-            Padding(
-              padding: EdgeInsets.only(
-                top: SizeConfig.blockSizeVertical * 1,
-                left: SizeConfig.blockSizeHorizontal * 10,
-                right: SizeConfig.blockSizeHorizontal * 10,
-              ),
-              child: Divider(
-                color: Utilities().colorGreyDark.withOpacity(0.3),
-                thickness: 1,
-              ),
-            ),
-            Padding(
-              padding: EdgeInsets.symmetric(
-                vertical: SizeConfig.blockSizeVertical * 1,
-              ),
-              child: Text(
-                "login_connect_with".tr(),
-                style: TextStyle(
-                  color: Utilities().colorGreyDark,
-                  fontSize: SizeConfig.blockSizeHorizontal * 3,
-                  fontWeight: FontWeight.bold,
+            if (_showSocialLogin) ...[
+              Padding(
+                padding: EdgeInsets.only(
+                  top: SizeConfig.blockSizeVertical * 1,
+                  left: SizeConfig.blockSizeHorizontal * 10,
+                  right: SizeConfig.blockSizeHorizontal * 10,
+                ),
+                child: Divider(
+                  color: Utilities().colorGreyDark.withOpacity(0.3),
+                  thickness: 1,
                 ),
               ),
-            ),
-            Row(
-              mainAxisAlignment: MainAxisAlignment.center,
-              spacing: SizeConfig.blockSizeHorizontal * 1,
-              children: [
-                CustomButton(
-                  onTap: () {
-                    // TODO: Implement Google login
-                  },
-                  title: Center(
-                    child: Text(
-                      "G",
-                      style: TextStyle(
-                        color: Colors.white,
-                        fontSize: SizeConfig.blockSizeHorizontal * 4,
-                        fontWeight: FontWeight.bold,
+              Padding(
+                padding: EdgeInsets.symmetric(
+                  vertical: SizeConfig.blockSizeVertical * 1,
+                ),
+                child: Text(
+                  "login_connect_with".tr(),
+                  style: TextStyle(
+                    color: Utilities().colorGreyDark,
+                    fontSize: SizeConfig.blockSizeHorizontal * 3,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+              ),
+              Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                spacing: SizeConfig.blockSizeHorizontal * 1,
+                children: [
+                  CustomButton(
+                    onTap: () {
+                      // TODO: Implement Google login
+                    },
+                    title: Center(
+                      child: Text(
+                        "G",
+                        style: TextStyle(
+                          color: Colors.white,
+                          fontSize: SizeConfig.blockSizeHorizontal * 4,
+                          fontWeight: FontWeight.bold,
+                        ),
                       ),
                     ),
+                    color: Utilities().colorYellow,
+                    borderColor: Colors.white,
+                    width: SizeConfig.blockSizeHorizontal * 12,
+                    height: SizeConfig.blockSizeVertical * 5,
+                    borderRadius: SizeConfig.blockSizeHorizontal * 10,
                   ),
-                  color: Utilities().colorYellow,
-                  borderColor: Colors.white,
-                  width: SizeConfig.blockSizeHorizontal * 12,
-                  height: SizeConfig.blockSizeVertical * 5,
-                  borderRadius: SizeConfig.blockSizeHorizontal * 10,
-                ),
 
-                CustomButton(
-                  onTap: () {
-                    // TODO: Implement Facebook login
-                  },
-                  title: Center(
-                    child: Text(
-                      "f",
-                      style: TextStyle(
-                        color: Colors.white,
-                        fontSize: SizeConfig.blockSizeHorizontal * 4,
-                        fontWeight: FontWeight.bold,
+                  CustomButton(
+                    onTap: () {
+                      // TODO: Implement Facebook login
+                    },
+                    title: Center(
+                      child: Text(
+                        "f",
+                        style: TextStyle(
+                          color: Colors.white,
+                          fontSize: SizeConfig.blockSizeHorizontal * 4,
+                          fontWeight: FontWeight.bold,
+                        ),
                       ),
                     ),
+                    color: Utilities().colorBlueDark,
+                    borderColor: Colors.white,
+                    width: SizeConfig.blockSizeHorizontal * 12,
+                    height: SizeConfig.blockSizeVertical * 5,
+                    borderRadius: SizeConfig.blockSizeHorizontal * 10,
                   ),
-                  color: Utilities().colorBlueDark,
-                  borderColor: Colors.white,
-                  width: SizeConfig.blockSizeHorizontal * 12,
-                  height: SizeConfig.blockSizeVertical * 5,
-                  borderRadius: SizeConfig.blockSizeHorizontal * 10,
-                ),
 
-                CustomButton(
-                  onTap: () {
-                    // TODO: Implement Apple login
-                  },
-                  title: Center(
-                    child: Text(
-                      "A",
-                      style: TextStyle(
-                        color: Colors.white,
-                        fontSize: SizeConfig.blockSizeHorizontal * 4,
-                        fontWeight: FontWeight.bold,
+                  CustomButton(
+                    onTap: () {
+                      // TODO: Implement Apple login
+                    },
+                    title: Center(
+                      child: Text(
+                        "A",
+                        style: TextStyle(
+                          color: Colors.white,
+                          fontSize: SizeConfig.blockSizeHorizontal * 4,
+                          fontWeight: FontWeight.bold,
+                        ),
                       ),
                     ),
+                    color: Colors.black,
+                    borderColor: Colors.white,
+                    width: SizeConfig.blockSizeHorizontal * 12,
+                    height: SizeConfig.blockSizeVertical * 5,
+                    borderRadius: SizeConfig.blockSizeHorizontal * 10,
                   ),
-                  color: Colors.black,
-                  borderColor: Colors.white,
-                  width: SizeConfig.blockSizeHorizontal * 12,
-                  height: SizeConfig.blockSizeVertical * 5,
-                  borderRadius: SizeConfig.blockSizeHorizontal * 10,
-                ),
-              ],
-            ),
+                ],
+              ),
+            ],
           ],
         ),
       ),

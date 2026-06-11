@@ -17,9 +17,13 @@ class AuthKeyboardAwareLayout extends StatelessWidget {
     required this.tabParticulierLabel,
     required this.tabProfessionnelLabel,
     required this.tabViews,
+    this.showTabs = true,
+    this.bottomBar,
   });
 
   final TabController tabController;
+  final bool showTabs;
+  final Widget? bottomBar;
   final String taglineForYou;
   final String taglineFromHome;
   final String welcomeTitle;
@@ -45,6 +49,11 @@ class AuthKeyboardAwareLayout extends StatelessWidget {
     final bottomInset = MediaQuery.of(context).viewInsets.bottom;
     final keyboardVisible = bottomInset > 0;
 
+    final isTablet = SizeConfig.isTablet();
+    final heroImageHeight = isTablet
+        ? (SizeConfig.screenHeight * 0.28).clamp(220.0, 320.0)
+        : SizeConfig.screenHeight * 0.42;
+
     return Scaffold(
       resizeToAvoidBottomInset: !keyboardVisible,
       backgroundColor: Colors.white,
@@ -56,7 +65,19 @@ class AuthKeyboardAwareLayout extends StatelessWidget {
               opacity: keyboardVisible ? 0 : 1,
               duration: _kAuthTransitionDuration,
               curve: _kAuthTransitionCurve,
-              child: Image.asset("${Utilities().imagePath}ouvrier.jpeg"),
+              child: Align(
+                alignment: Alignment.topCenter,
+                child: SizedBox(
+                  width: SizeConfig.screenWidth,
+                  height: heroImageHeight,
+                  child: Image.asset(
+                    "${Utilities().imagePath}ouvrier.jpeg",
+                    width: SizeConfig.screenWidth,
+                    height: heroImageHeight,
+                    fit: BoxFit.cover,
+                  ),
+                ),
+              ),
             ),
           ),
           SafeArea(
@@ -89,17 +110,21 @@ class AuthKeyboardAwareLayout extends StatelessWidget {
                         ),
                       ),
                     ),
-                    _AuthTabBar(
-                      controller: tabController,
-                      particulierLabel: tabParticulierLabel,
-                      professionnelLabel: tabProfessionnelLabel,
-                    ),
-                    Expanded(
-                      child: TabBarView(
+                    if (showTabs)
+                      _AuthTabBar(
                         controller: tabController,
-                        children: tabViews,
+                        particulierLabel: tabParticulierLabel,
+                        professionnelLabel: tabProfessionnelLabel,
                       ),
+                    Expanded(
+                      child: showTabs
+                          ? TabBarView(
+                              controller: tabController,
+                              children: tabViews,
+                            )
+                          : tabViews.first,
                     ),
+                    if (bottomBar != null) bottomBar!,
                   ],
                 ),
               ),
@@ -175,9 +200,7 @@ class _AuthHeader extends StatelessWidget {
           ),
         ),
         Padding(
-          padding: EdgeInsets.only(
-            top: SizeConfig.blockSizeVertical * 1,
-          ),
+          padding: EdgeInsets.only(top: SizeConfig.blockSizeVertical * 1),
           child: CustomButton(
             onTap: () {},
             title: Center(
@@ -198,14 +221,13 @@ class _AuthHeader extends StatelessWidget {
           ),
         ),
         Padding(
-          padding: EdgeInsets.only(
-            top: SizeConfig.blockSizeVertical * 2,
-          ),
+          padding: EdgeInsets.only(top: SizeConfig.blockSizeVertical * 10),
           child: Image.asset("${Utilities().imagePath}logo.png"),
         ),
         Padding(
           padding: EdgeInsets.only(
             top: SizeConfig.blockSizeVertical * 2,
+            bottom: SizeConfig.blockSizeVertical * 2,
           ),
           child: Text(
             welcomeTitle,
@@ -238,9 +260,7 @@ class _AuthTabBar extends StatelessWidget {
     return Container(
       width: SizeConfig.blockSizeHorizontal * 90,
       height: SizeConfig.blockSizeVertical * 7,
-      margin: EdgeInsets.symmetric(
-        vertical: SizeConfig.blockSizeVertical * 2,
-      ),
+      margin: EdgeInsets.symmetric(vertical: SizeConfig.blockSizeVertical * 2),
       padding: EdgeInsets.all(SizeConfig.blockSizeHorizontal * 2),
       decoration: BoxDecoration(
         color: Utilities().colorBlueLight.withOpacity(0.5),

@@ -2,6 +2,10 @@
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
+	<key>BGTaskSchedulerPermittedIdentifiers</key>
+	<array>
+		<string>com.pravera.flutter_foreground_task.refresh</string>
+	</array>
 	<key>CADisableMinimumFrameDurationOnPhone</key>
 	<true/>
 	<key>CFBundleDevelopmentRegion</key>
@@ -19,31 +23,27 @@
 	<key>CFBundlePackageType</key>
 	<string>APPL</string>
 	<key>CFBundleShortVersionString</key>
-	<string>$(FLUTTER_BUILD_NAME)</string>
+	<string>$(MARKETING_VERSION)</string>
 	<key>CFBundleSignature</key>
 	<string>????</string>
 	<key>CFBundleVersion</key>
-	<string>$(FLUTTER_BUILD_NUMBER)</string>
+	<string>$(CURRENT_PROJECT_VERSION)</string>
+	<key>GMSApiKey</key>
+	<string>$(GOOGLE_MAPS_API_KEY)</string>
 	<key>LSRequiresIPhoneOS</key>
 	<true/>
 	<key>NSCameraUsageDescription</key>
-	<string>Cette application a besoin d'accéder à la caméra pour prendre des photos de documents.</string>
+	<string>Cette application a besoin d'accéder à la caméra pour photographier vos documents (CNI, passeport, certificat de résidence, diplôme).</string>
+	<key>NSLocationAlwaysAndWhenInUseUsageDescription</key>
+	<string>En arrière-plan, la position permet aux clients de vous voir sur la carte pendant une prestation.</string>
+	<key>NSLocationWhenInUseUsageDescription</key>
+	<string>Votre position servira à afficher la carte, les trajets et à mettre à jour votre localisation pour les prestations.</string>
 	<key>NSPhotoLibraryAddUsageDescription</key>
 	<string>Cette application souhaite enregistrer des photos dans votre photothèque.</string>
 	<key>NSPhotoLibraryUsageDescription</key>
-	<string>Cette application a besoin d'accéder à vos photos pour sélectionner des documents (CNI, casier judiciaire, etc.).</string>
-	<key>NSLocationWhenInUseUsageDescription</key>
-	<string>Votre position servira à afficher la carte, les trajets et à mettre à jour votre localisation pour les prestations.</string>
-	<key>NSLocationAlwaysAndWhenInUseUsageDescription</key>
-	<string>En arrière-plan, la position permet aux clients de vous voir sur la carte pendant une prestation.</string>
-	<key>GMSApiKey</key>
-	<string>$(GOOGLE_MAPS_API_KEY)</string>
+	<string>Cette application a besoin d'accéder à vos photos pour sélectionner des documents (CNI, passeport, certificat de résidence, diplôme).</string>
 	<key>UIApplicationSupportsIndirectInputEvents</key>
 	<true/>
-	<key>BGTaskSchedulerPermittedIdentifiers</key>
-	<array>
-		<string>com.pravera.flutter_foreground_task.refresh</string>
-	</array>
 	<key>UIBackgroundModes</key>
 	<array>
 		<string>remote-notification</string>

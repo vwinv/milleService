@@ -86,7 +86,7 @@ Widget _resolveHomeSync({
     if (statutVerif == 'REFUSE') {
       return const PrestataireDocumentsRefuses();
     }
-    if (userProvider.abonnement == null) {
+    if (!userProvider.hasAbonnementValide) {
       return const HomeAbonnement();
     }
     if (settings.locale == null) {

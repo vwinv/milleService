@@ -2,7 +2,9 @@
 abstract final class AppRoutes {
   static const loading = '/loading';
   static const welcome = '/welcome';
+  static const chooseProfile = '/choose-profile';
   static const login = '/login';
+  static const loginParticulier = '/login/particulier';
   static const signup = '/signup';
   static const forgotPassword = '/forgot-password';
   static const settings = '/settings';
@@ -36,12 +38,41 @@ abstract final class AppRoutes {
   static const editInfos = '/edit-infos';
   static const historique = '/historique';
 
-  static const authPaths = {welcome, login, signup, forgotPassword};
-  static const publicPaths = {loading, welcome, login, signup, forgotPassword};
+  static const authPaths = {
+    welcome,
+    chooseProfile,
+    login,
+    loginParticulier,
+    signup,
+    forgotPassword,
+  };
+
+  static const guestPaths = {
+    loading,
+    welcome,
+    chooseProfile,
+    settings,
+    login,
+    loginParticulier,
+    signup,
+    forgotPassword,
+    profil,
+  };
 
   static bool isAuthPath(String location) =>
       authPaths.any((p) => location == p || location.startsWith('$p/'));
 
-  static bool isPublicPath(String location) =>
-      publicPaths.any((p) => location == p || location.startsWith('$p/'));
+  static bool isParticulierPath(String location) =>
+      location == particulierHome ||
+      location.startsWith('$particulierHome/');
+
+  static bool isParticulierConfirmPath(String location) =>
+      RegExp(r'^/particulier/prestataires/[^/]+/confirm').hasMatch(location);
+
+  static bool isGuestAccessiblePath(String location) {
+    if (guestPaths.any((p) => location == p || location.startsWith('$p/'))) {
+      return true;
+    }
+    return isParticulierPath(location);
+  }
 }

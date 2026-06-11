@@ -194,7 +194,14 @@ class _HomeParticulierState extends State<HomeParticulier> {
             icon: const Icon(Icons.person),
             color: Colors.black,
             onPressed: () {
-              AppNavigation.pushProfil(context);
+              final userProvider = context.read<UserProvider>();
+              final connected =
+                  userProvider.isAuthenticated && userProvider.user != null;
+              if (connected) {
+                AppNavigation.pushProfil(context);
+              } else {
+                AppNavigation.goParticulierLogin(context);
+              }
             },
           ),
         ],

@@ -92,8 +92,14 @@ class PrestatairesController {
         );
       }
 
+      final hasToken = token != null && token.isNotEmpty;
+      final hasCoords = lat != null && lng != null;
+      final path = (!hasToken && hasCoords)
+          ? '/prestataires/public/favoris'
+          : '/prestataires/favoris';
+
       final response = await dio.get(
-        '/prestataires/favoris',
+        path,
         queryParameters: {
           if (lat != null) 'lat': lat,
           if (lng != null) 'lng': lng,
@@ -101,8 +107,7 @@ class PrestatairesController {
         options: Options(
           headers: {
             "Content-Type": "application/json",
-            if (token != null && token.isNotEmpty)
-              "Authorization": "Bearer $token",
+            if (hasToken) "Authorization": "Bearer $token",
           },
           validateStatus: (status) => status != null && status < 500,
         ),
@@ -271,14 +276,19 @@ class PrestatairesController {
       if (lat != null) queryParams['lat'] = lat;
       if (lng != null) queryParams['lng'] = lng;
 
+      final hasToken = token != null && token.isNotEmpty;
+      final hasCoords = lat != null && lng != null;
+      final path = (!hasToken && hasCoords)
+          ? '/prestataires/public/search'
+          : '/prestataires/search';
+
       final response = await dio.get(
-        '/prestataires/search',
+        path,
         queryParameters: queryParams,
         options: Options(
           headers: {
             "Content-Type": "application/json",
-            if (token != null && token.isNotEmpty)
-              "Authorization": "Bearer $token",
+            if (hasToken) "Authorization": "Bearer $token",
           },
           validateStatus: (status) => status != null && status < 500,
         ),

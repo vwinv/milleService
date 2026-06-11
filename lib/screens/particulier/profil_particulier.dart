@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:milleservices/widgets/customButton.dart';
 import 'package:provider/provider.dart';
 import 'package:milleservices/models/user.dart';
+import 'package:milleservices/providers/auth_resume_provider.dart';
 import 'package:milleservices/providers/userProvider.dart';
 import 'package:milleservices/providers/prestationsProvider.dart';
 import 'package:milleservices/models/prestation.dart';
@@ -32,6 +33,11 @@ class _ProfilParticulierState extends State<ProfilParticulier> {
     if (user == null) {
       final waiting =
           !userProvider.initialLoadDone || userProvider.isLoading;
+      final currentCode =
+          settings.selectedLocale?.languageCode ?? context.locale.languageCode;
+      final currentLabel = currentCode == 'en'
+          ? 'profil_lang_en'.tr()
+          : 'profil_lang_fr'.tr();
       return Scaffold(
         backgroundColor: Colors.white,
         appBar: AppBar(
@@ -46,28 +52,101 @@ class _ProfilParticulierState extends State<ProfilParticulier> {
             style: const TextStyle(color: Colors.black, fontWeight: FontWeight.bold),
           ),
         ),
-        body: Center(
-          child: waiting
-              ? const CircularProgressIndicator()
-              : Padding(
-                  padding: const EdgeInsets.all(24),
-                  child: Column(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      Text(
-                        'profil_unavailable'.tr(),
-                        textAlign: TextAlign.center,
-                        style: const TextStyle(color: Colors.black87),
-                      ),
-                      const SizedBox(height: 16),
-                      TextButton(
-                        onPressed: () => AppNavigation.pop(context),
-                        child: Text('common_back'.tr()),
-                      ),
-                    ],
-                  ),
+        body: waiting
+            ? const Center(child: CircularProgressIndicator())
+            : SingleChildScrollView(
+                padding: EdgeInsets.symmetric(
+                  horizontal: SizeConfig.blockSizeHorizontal * 6,
+                  vertical: SizeConfig.blockSizeVertical * 2,
                 ),
-        ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    Text(
+                      'profil_guest_title'.tr(),
+                      style: TextStyle(
+                        color: Colors.black,
+                        fontSize: SizeConfig.fontSize(
+                          SizeConfig.blockSizeHorizontal * 4.5,
+                        ),
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                    SizedBox(height: SizeConfig.blockSizeVertical * 1),
+                    Text(
+                      'profil_guest_subtitle'.tr(),
+                      style: TextStyle(
+                        color: Utilities().colorGreyDark,
+                        fontSize: SizeConfig.fontSize(
+                          SizeConfig.blockSizeHorizontal * 3.4,
+                        ),
+                      ),
+                    ),
+                    SizedBox(height: SizeConfig.blockSizeVertical * 3),
+                    CustomButton(
+                      onTap: () => AppNavigation.goParticulierLogin(context),
+                      color: Utilities().colorBlueDark,
+                      borderColor: Colors.white,
+                      width: double.infinity,
+                      height: SizeConfig.blockSizeVertical * 6,
+                      borderRadius: SizeConfig.blockSizeHorizontal * 10,
+                      title: Center(
+                        child: Text(
+                          'login'.tr(),
+                          style: TextStyle(
+                            color: Colors.white,
+                            fontSize: SizeConfig.fontSize(
+                              SizeConfig.blockSizeHorizontal * 3.5,
+                            ),
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                      ),
+                    ),
+                    SizedBox(height: SizeConfig.blockSizeVertical * 1.5),
+                    CustomButton(
+                      onTap: () => AppNavigation.goParticulierSignUp(context),
+                      color: Utilities().colorYellow,
+                      borderColor: Colors.white,
+                      width: double.infinity,
+                      height: SizeConfig.blockSizeVertical * 6,
+                      borderRadius: SizeConfig.blockSizeHorizontal * 10,
+                      title: Center(
+                        child: Text(
+                          'signup'.tr(),
+                          style: TextStyle(
+                            color: Colors.white,
+                            fontSize: SizeConfig.fontSize(
+                              SizeConfig.blockSizeHorizontal * 3.5,
+                            ),
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                      ),
+                    ),
+                    SizedBox(height: SizeConfig.blockSizeVertical * 2.5),
+                    _buildLanguageAccordion(
+                      settings: settings,
+                      currentCode: currentCode,
+                      currentLabel: currentLabel,
+                    ),
+                    SizedBox(height: SizeConfig.blockSizeVertical * 2),
+                    TextButton(
+                      onPressed: () => AppNavigation.goPrestataireLogin(context),
+                      child: Text(
+                        'profil_guest_prestataire_link'.tr(),
+                        style: TextStyle(
+                          color: Colors.blue,
+                          fontSize: SizeConfig.fontSize(
+                            SizeConfig.blockSizeHorizontal * 3.4,
+                          ),
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
       );
     }
     final currentCode =
@@ -307,9 +386,11 @@ class _ProfilParticulierState extends State<ProfilParticulier> {
 
             SizedBox(height: SizeConfig.blockSizeVertical * 2),
             TextButton(
-        onPressed: () {
-          userProvider.logout();
-                AppNavigation.goWelcome(context);
+        onPressed: () async {
+          context.read<AuthResumeProvider>().clear();
+          await userProvider.logout();
+          if (!context.mounted) return;
+          AppNavigation.goParticulierHome(context);
               },
               child: Text(
                 'profil_logout'.tr(),

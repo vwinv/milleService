@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:milleservices/models/prestataire.dart';
 import 'package:milleservices/models/prestation.dart';
+import 'package:milleservices/providers/auth_resume_provider.dart';
 import 'package:milleservices/providers/settings_provider.dart';
 import 'package:milleservices/providers/userProvider.dart';
 import 'package:milleservices/router/app_redirect.dart';
@@ -26,8 +27,11 @@ import 'package:milleservices/screens/prestataire/prestataire_upload_documents.d
 import 'package:milleservices/screens/prestataire/prestataire_validate_profil.dart';
 import 'package:milleservices/screens/prestataire/wallet.dart';
 import 'package:milleservices/screens/settings.dart';
+import 'package:milleservices/screens/choose_profile.dart';
 import 'package:milleservices/screens/welcome.dart';
+import 'package:milleservices/services/app_bootstrap.dart';
 import 'package:milleservices/services/navigation.dart';
+import 'package:milleservices/widgets/app_launch_screen.dart';
 
 /// Référence globale au routeur (notifs FCM, etc.).
 abstract final class AppRouterHolder {
@@ -35,45 +39,57 @@ abstract final class AppRouterHolder {
 }
 
 GoRouter createAppRouter({
+  required Listenable refreshListenable,
   required UserProvider userProvider,
   required SettingsProvider settingsProvider,
+  required AuthResumeProvider authResumeProvider,
+  required AppBootstrapNotifier appBootstrap,
 }) {
   final router = GoRouter(
     navigatorKey: NavigationService.navigatorKey,
     initialLocation: AppRoutes.loading,
-    refreshListenable: Listenable.merge([userProvider, settingsProvider]),
+    refreshListenable: refreshListenable,
     redirect: (context, state) => resolveAppRedirect(
       userProvider: userProvider,
       settingsProvider: settingsProvider,
+      authResumeProvider: authResumeProvider,
+      appBootstrap: appBootstrap,
       matchedLocation: state.matchedLocation,
     ),
     routes: [
       GoRoute(
         path: AppRoutes.loading,
-        builder: (_, __) => const Scaffold(
-          body: Center(child: CircularProgressIndicator()),
-        ),
+        builder: (_, __) => const AppLaunchScreen(),
       ),
+      GoRoute(path: AppRoutes.welcome, builder: (_, __) => const Welcome()),
       GoRoute(
-        path: AppRoutes.welcome,
-        builder: (_, __) => const Welcome(),
+        path: AppRoutes.chooseProfile,
+        builder: (_, __) => const ChooseProfile(),
       ),
       GoRoute(
         path: AppRoutes.login,
-        builder: (_, __) => Login(),
+        builder: (_, __) => const Login(role: LoginRole.prestataire),
+      ),
+      GoRoute(
+        path: AppRoutes.loginParticulier,
+        builder: (_, __) => const Login(role: LoginRole.particulier),
       ),
       GoRoute(
         path: AppRoutes.signup,
-        builder: (_, __) => SignUp(),
+        builder: (context, state) {
+          final role = state.uri.queryParameters['role'];
+          return SignUp(
+            initialRole: role == 'particulier'
+                ? SignUpRole.particulier
+                : SignUpRole.prestataire,
+          );
+        },
       ),
       GoRoute(
         path: AppRoutes.forgotPassword,
         builder: (_, __) => const ForgotPasswordScreen(),
       ),
-      GoRoute(
-        path: AppRoutes.settings,
-        builder: (_, __) => const Settings(),
-      ),
+      GoRoute(path: AppRoutes.settings, builder: (_, __) => const Settings()),
       GoRoute(
         path: AppRoutes.particulierHome,
         builder: (_, __) => const HomeParticulier(),
@@ -160,31 +176,20 @@ GoRouter createAppRouter({
         builder: (context, state) {
           final extra = state.extra;
           if (extra is PrestataireConfirmPrestationExtra) {
-            return PrestataireConfirmPrestation(
-              prestation: extra.prestation,
-            );
+            return PrestataireConfirmPrestation(prestation: extra.prestation);
           }
           return const _RouteErrorScreen(
             message: 'Prestation introuvable (navigation).',
           );
         },
       ),
-      GoRoute(
-        path: AppRoutes.prestataireWallet,
-        builder: (_, __) => Wallet(),
-      ),
-      GoRoute(
-        path: AppRoutes.profil,
-        builder: (_, __) => ProfilParticulier(),
-      ),
+      GoRoute(path: AppRoutes.prestataireWallet, builder: (_, __) => Wallet()),
+      GoRoute(path: AppRoutes.profil, builder: (_, __) => ProfilParticulier()),
       GoRoute(
         path: AppRoutes.notifications,
         builder: (_, __) => const NotificationListScreen(),
       ),
-      GoRoute(
-        path: AppRoutes.editInfos,
-        builder: (_, __) => const EditInfos(),
-      ),
+      GoRoute(path: AppRoutes.editInfos, builder: (_, __) => const EditInfos()),
       GoRoute(
         path: AppRoutes.historique,
         builder: (context, state) {

@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:milleservices/models/prestataire.dart';
 import 'package:milleservices/models/prestation.dart';
+import 'package:milleservices/providers/auth_resume_provider.dart';
 import 'package:milleservices/providers/home_content_provider.dart';
 import 'package:milleservices/providers/settings_provider.dart';
 import 'package:milleservices/providers/userProvider.dart';
@@ -16,14 +17,62 @@ abstract final class AppNavigation {
     context.go(AppRoutes.welcome);
   }
 
+  static void goChooseProfile(BuildContext context) {
+    context.go(AppRoutes.chooseProfile);
+  }
+
+  static void goSettings(BuildContext context) {
+    context.go(AppRoutes.settings);
+  }
+
   static void goLogin(BuildContext context) => context.go(AppRoutes.login);
 
+  static void goPrestataireLogin(BuildContext context) =>
+      context.go(AppRoutes.login);
+
+  static Future<T?> pushParticulierLogin<T>(BuildContext context) =>
+      context.push<T>(AppRoutes.loginParticulier);
+
+  static void goParticulierLogin(BuildContext context) {
+    pushParticulierLogin(context);
+  }
+
+  /// Ferme le login particulier et revient à l'écran précédent (carte, fiche, etc.).
+  static void closeParticulierLogin(BuildContext context) {
+    if (context.canPop()) {
+      context.pop();
+      return;
+    }
+    goParticulierHome(context);
+  }
+
   static void goSignUp(BuildContext context) => context.go(AppRoutes.signup);
+
+  static void goPrestataireSignUp(BuildContext context) =>
+      context.go('${AppRoutes.signup}?role=prestataire');
+
+  static void goParticulierSignUp(BuildContext context) =>
+      context.go('${AppRoutes.signup}?role=particulier');
 
   static void goHome(BuildContext context) {
     final user = context.read<UserProvider>();
     final settings = context.read<SettingsProvider>();
     context.go(homePathForUser(userProvider: user, settingsProvider: settings));
+  }
+
+  /// Après auth : reprend un parcours en attente ou va à l'accueil habituel.
+  static void continueAfterAuth(BuildContext context) {
+    final resumed = context.read<AuthResumeProvider>().navigateAfterAuth(context);
+    if (!resumed) {
+      goHome(context);
+    }
+  }
+
+  static void resumeConfirmPrestationAfterAuth(
+    BuildContext context,
+    ConfirmPrestationExtra extra,
+  ) {
+    context.read<AuthResumeProvider>().setConfirmPrestation(extra);
   }
 
   /// Accueil particulier (carte + favoris).

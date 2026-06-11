@@ -29,7 +29,11 @@ class _HomeAbonnementState extends State<HomeAbonnement> {
   @override
   void initState() {
     super.initState();
-    Future.microtask(_loadOffres);
+    Future.microtask(() async {
+      await context.read<UserProvider>().syncPrestataireAbonnementIfNeeded();
+      if (!mounted) return;
+      await _loadOffres();
+    });
   }
 
   /// Pré-sélectionne la première offre si la liste est déjà dispo (ex. cache).
@@ -152,45 +156,13 @@ class _HomeAbonnementState extends State<HomeAbonnement> {
         initialTelephone: user?.telephone?.toString() ?? '',
         email: user?.email?.toString(),
         montantLabel: '${_formatPrix(selected.prix)} FCFA',
-        verifyBeforeComplete: () async {
-          const maxAttempts = 48;
-          const pause = Duration(milliseconds: 500);
-          final offreIdAttendu = selected.id.toString();
-          for (var i = 0; i < maxAttempts; i++) {
-            if (i > 0) await Future<void>.delayed(pause);
-            if (!mounted) return false;
-            var t = userProvider.token;
-            var paidRes = await auth.isAbonnementPaydunyaInvoicePaid(
-              token: t,
-              invoiceToken: invoiceToken,
-            );
-            if (paidRes.status == 401) {
-              await userProvider.refreshToken();
-              if (!mounted) return false;
-              t = userProvider.token;
-              if (t == null || t.isEmpty) return false;
-              paidRes = await auth.isAbonnementPaydunyaInvoicePaid(
-                token: t,
-                invoiceToken: invoiceToken,
-              );
-            }
-            if (paidRes.success != true || paidRes.data is! Map) continue;
-            final dm = Map<String, dynamic>.from(paidRes.data as Map);
-            if (dm['paid'] != true) continue;
-            final aboRaw = dm['abonnement'];
-            if (aboRaw != null) {
-              await userProvider.applyAbonnementCourantPayload(aboRaw);
-            } else {
-              await userProvider.refreshAbonnementCourant();
-            }
-            if (!mounted) return false;
-            final a = userProvider.abonnement;
-            if (a != null && a.offreId?.toString() == offreIdAttendu) {
-              return true;
-            }
-          }
-          return false;
-        },
+        verifyBeforeComplete: () => _verifyAbonnementPaydunyaPaid(
+          userProvider: userProvider,
+          auth: auth,
+          invoiceToken: invoiceToken,
+          offreIdAttendu: selected.id.toString(),
+          isMounted: () => mounted,
+        ),
         onSoftPay: ({
           required String method,
           required String prenom,
@@ -245,8 +217,8 @@ class _HomeAbonnementState extends State<HomeAbonnement> {
     await userProvider.refreshAbonnementCourant();
     if (!mounted) return;
     final aboApres = userProvider.abonnement;
-    if (aboApres == null) return;
-    if (aboApres.offreId?.toString() != selected.id.toString()) return;
+    if (!userProvider.hasAbonnementValide) return;
+    if (aboApres?.offreId?.toString() != selected.id.toString()) return;
     Utilities().showMesage(
       context,
       'success',
@@ -262,6 +234,7 @@ class _HomeAbonnementState extends State<HomeAbonnement> {
     final userProvider = context.watch<UserProvider>();
     final offres = userProvider.offres;
     final utils = Utilities();
+    final isRenewal = userProvider.abonnementExpiredFlag;
     _ensureFirstSelected(offres);
 
     return Scaffold(
@@ -333,7 +306,9 @@ class _HomeAbonnementState extends State<HomeAbonnement> {
                         right: SizeConfig.blockSizeHorizontal * 10,
                       ),
                       child: Text(
-                        'abonnement_title'.tr(),
+                        isRenewal
+                            ? 'abonnement_renewal_title'.tr()
+                            : 'abonnement_title'.tr(),
                         style: TextStyle(
                           fontSize: SizeConfig.blockSizeHorizontal * 6,
                           fontWeight: FontWeight.bold,
@@ -341,6 +316,16 @@ class _HomeAbonnementState extends State<HomeAbonnement> {
                         ),
                       ),
                     ),
+                    if (isRenewal) ...[
+                      SizedBox(height: SizeConfig.blockSizeVertical * 1.5),
+                      Text(
+                        'abonnement_renewal_subtitle'.tr(),
+                        style: TextStyle(
+                          fontSize: SizeConfig.blockSizeHorizontal * 3.5,
+                          color: utils.colorGreyDark,
+                        ),
+                      ),
+                    ],
                     SizedBox(height: SizeConfig.blockSizeVertical * 3),
                     ...offres.map((offre) {
                       final selected = _selectedOffre?.id == offre.id;
@@ -511,4 +496,67 @@ class _HomeAbonnementState extends State<HomeAbonnement> {
       ),
     );
   }
+}
+
+/// Vérifie le paiement PayDunya sans boucler si la facture est encore en attente.
+Future<bool> _verifyAbonnementPaydunyaPaid({
+  required UserProvider userProvider,
+  required Authcontroller auth,
+  required String invoiceToken,
+  required String offreIdAttendu,
+  required bool Function() isMounted,
+}) async {
+  const maxAttempts = 5;
+  const pause = Duration(seconds: 2);
+
+  for (var i = 0; i < maxAttempts; i++) {
+    if (i > 0) await Future<void>.delayed(pause);
+    if (!isMounted()) return false;
+
+    var t = userProvider.token;
+    var paidRes = await auth.isAbonnementPaydunyaInvoicePaid(
+      token: t,
+      invoiceToken: invoiceToken,
+    );
+    if (paidRes.status == 401) {
+      await userProvider.refreshToken();
+      if (!isMounted()) return false;
+      t = userProvider.token;
+      if (t == null || t.isEmpty) return false;
+      paidRes = await auth.isAbonnementPaydunyaInvoicePaid(
+        token: t,
+        invoiceToken: invoiceToken,
+      );
+    }
+
+    if (paidRes.success != true || paidRes.data is! Map) {
+      if (i >= maxAttempts - 1) return false;
+      continue;
+    }
+
+    final dm = Map<String, dynamic>.from(paidRes.data as Map);
+    if (dm['paid'] == true) {
+      final aboRaw = dm['abonnement'];
+      if (aboRaw != null) {
+        await userProvider.applyAbonnementCourantPayload(aboRaw);
+      } else {
+        await userProvider.refreshAbonnementCourant();
+      }
+      if (!isMounted()) return false;
+      final a = userProvider.abonnement;
+      return userProvider.hasAbonnementValide &&
+          a?.offreId?.toString() == offreIdAttendu;
+    }
+
+    final err = dm['error']?.toString().toLowerCase() ?? '';
+    // Paiement non finalisé côté PayDunya → pas de polling inutile.
+    if (err.contains('pending') ||
+        err.contains('failed') ||
+        err.contains('cancel')) {
+      return false;
+    }
+
+    if (i >= maxAttempts - 1) return false;
+  }
+  return false;
 }

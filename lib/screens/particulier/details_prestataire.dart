@@ -665,13 +665,6 @@ class _DetailsPrestataireState extends State<DetailsPrestataire> {
 
   Future<void> _onChoisirPrestataire() async {
     final userProvider = context.read<UserProvider>();
-    final token = userProvider.token;
-    if (token == null || token.isEmpty) {
-      if (mounted) {
-        Utilities().showMesage(context, 'error', 'details_need_login'.tr());
-      }
-      return;
-    }
     final services = widget.prestataire.services;
     final firstService = services.isNotEmpty ? services.first : null;
     final prestataireServiceId = firstService?.prestataireServiceId;
@@ -683,15 +676,22 @@ class _DetailsPrestataireState extends State<DetailsPrestataire> {
       }
       return;
     }
-    AppNavigation.pushConfirmPrestation(
-      context,
-      ConfirmPrestationExtra(
-        prestataire: widget.prestataire,
-        prestataireServiceId: prestataireServiceId,
-        serviceLibelle: firstService.libelle,
-        adresseParticulier: userProvider.user?.adresse?.toString(),
-      ),
+    final extra = ConfirmPrestationExtra(
+      prestataire: widget.prestataire,
+      prestataireServiceId: prestataireServiceId,
+      serviceLibelle: firstService.libelle,
+      adresseParticulier: userProvider.user?.adresse?.toString(),
     );
+    final token = userProvider.token;
+    if (token == null || token.isEmpty) {
+      if (mounted) {
+        Utilities().showMesage(context, 'infos', 'details_need_login'.tr());
+        AppNavigation.resumeConfirmPrestationAfterAuth(context, extra);
+        AppNavigation.goParticulierLogin(context);
+      }
+      return;
+    }
+    AppNavigation.pushConfirmPrestation(context, extra);
   }
 
   Widget _buildAvisList() {

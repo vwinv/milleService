@@ -45,11 +45,7 @@ class _HomePrestataireState extends State<HomePrestataire> {
   void initState() {
     super.initState();
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      _loadPrestationStats();
-      _loadCataloguePhotos();
-      if (Utilities.useRealtimeLocation) {
-        unawaited(_syncPrestataireGps());
-      }
+      unawaited(_bootstrapPrestataireSession());
     });
     _statsTimer = Timer.periodic(const Duration(seconds: 15), (_) {
       if (mounted) {
@@ -70,6 +66,21 @@ class _HomePrestataireState extends State<HomePrestataire> {
     if (!mounted) return;
     final up = context.read<UserProvider>();
     await up.pushMyDeviceLocation(ll.latitude, ll.longitude);
+  }
+
+  Future<void> _bootstrapPrestataireSession() async {
+    final userProvider = context.read<UserProvider>();
+    await userProvider.syncPrestataireAbonnementIfNeeded();
+    if (!mounted) return;
+    if (!userProvider.hasAbonnementValide) {
+      AppNavigation.goHome(context);
+      return;
+    }
+    _loadPrestationStats();
+    _loadCataloguePhotos();
+    if (Utilities.useRealtimeLocation) {
+      unawaited(_syncPrestataireGps());
+    }
   }
 
   @override

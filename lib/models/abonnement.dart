@@ -23,6 +23,26 @@ class Abonnement {
 
   // ignore: missing_return
 
+  /// Abonnement utilisable : statut ACTIF et date de fin non dépassée.
+  bool get isValide {
+    final statutNorm = statut?.toString().toUpperCase() ?? '';
+    if (statutNorm != 'ACTIF') return false;
+    final fin = _parseDateFin(dateFin);
+    if (fin == null) return false;
+    final today = DateTime.now();
+    final todayDate = DateTime(today.year, today.month, today.day);
+    final finDate = DateTime(fin.year, fin.month, fin.day);
+    return !finDate.isBefore(todayDate);
+  }
+
+  static DateTime? _parseDateFin(dynamic value) {
+    if (value == null) return null;
+    if (value is DateTime) return value;
+    final raw = value.toString().trim();
+    if (raw.isEmpty) return null;
+    return DateTime.tryParse(raw);
+  }
+
   factory Abonnement.fromJson(dynamic json) {
     final m =
         json is Map ? Map<String, dynamic>.from(json) : <String, dynamic>{};
