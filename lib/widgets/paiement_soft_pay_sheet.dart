@@ -6,6 +6,7 @@ import 'package:flutter/material.dart';
 import 'package:milleservices/models/response.dart';
 import 'package:milleservices/services/sizeConfig.dart';
 import 'package:milleservices/services/utilities.dart';
+import 'package:milleservices/widgets/keyboard_dismiss.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 /// Résultat UI aligné sur la doc PayDunya SoftPay (`message`, `url`, `other_url`).
@@ -527,7 +528,7 @@ class _PaiementSoftPaySheetState extends State<PaiementSoftPaySheet> {
                 clipBehavior: Clip.antiAlias,
                 child: Padding(
                   padding: EdgeInsets.only(bottom: bottom),
-                  child: SingleChildScrollView(
+                  child: KeyboardDismissScrollView(
                     child: Padding(
                       padding: EdgeInsets.fromLTRB(
                         20,

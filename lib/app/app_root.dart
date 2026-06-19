@@ -9,6 +9,7 @@ import 'package:milleservices/router/app_router.dart';
 import 'package:milleservices/services/app_bootstrap.dart';
 import 'package:milleservices/services/fcm_debug_log.dart';
 import 'package:milleservices/services/notificationService.dart';
+import 'package:milleservices/widgets/keyboard_dismiss.dart';
 import 'package:provider/provider.dart';
 
 /// Racine UI : [MaterialApp.router] + initialisation FCM une fois connecté.
@@ -76,8 +77,9 @@ class _AppRootState extends State<AppRoot> {
       localizationsDelegates: context.localizationDelegates,
       supportedLocales: context.supportedLocales,
       locale: settingsProvider.locale ?? context.locale,
-      builder: (context, child) =>
-          WithForegroundTask(child: child ?? const SizedBox.shrink()),
+      builder: (context, child) => KeyboardDismissOnTap(
+        child: WithForegroundTask(child: child ?? const SizedBox.shrink()),
+      ),
     );
   }
 }

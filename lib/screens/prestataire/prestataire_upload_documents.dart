@@ -7,13 +7,15 @@ import 'package:go_router/go_router.dart';
 import 'package:milleservices/controllers/authController.dart';
 import 'package:milleservices/controllers/prestatairesController.dart';
 import 'package:milleservices/providers/userProvider.dart';
-import 'package:milleservices/screens/prestataire/prestataire_validate_profil.dart';
 import 'package:milleservices/navigation/app_navigation.dart';
 import 'package:milleservices/router/app_routes.dart';
+import 'package:milleservices/models/prestataire_document.dart';
+import 'package:milleservices/services/prestataire_required_documents.dart';
 import 'package:milleservices/services/document_picker_helper.dart';
 import 'package:milleservices/services/pick_file_name.dart';
 import 'package:milleservices/services/sizeConfig.dart';
 import 'package:milleservices/services/utilities.dart';
+import 'package:milleservices/widgets/keyboard_dismiss.dart';
 import 'package:provider/provider.dart';
 
 class PrestataireUploadDocuments extends StatefulWidget {
@@ -26,21 +28,64 @@ class PrestataireUploadDocuments extends StatefulWidget {
 
 class _PrestataireUploadDocumentsState
     extends State<PrestataireUploadDocuments> {
-  final Map<String, PlatformFile?> _files = {};
+  final Map<String, PlatformFile?> _pickedFiles = {};
+  final Map<String, PrestataireDocument> _existingByType = {};
   bool _isSubmitting = false;
+  bool _checkingExisting = true;
 
-  static const _requiredDocs = <Map<String, String>>[
-    {'typeCode': 'cni_recto', 'label': 'CNI / Passeport (recto)'},
-    {'typeCode': 'cni_verso', 'label': 'CNI / Passeport (verso)'},
-    {
-      'typeCode': 'certificat_residence',
-      'label': 'Certificat de résidence',
-    },
-    {'typeCode': 'diplome', 'label': 'Diplôme'},
-  ];
+  List<Map<String, String>> get _requiredDocs => prestataireRequiredDocsCatalog;
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _loadExistingDocuments();
+    });
+  }
+
+  Future<void> _loadExistingDocuments() async {
+    final userProvider = context.read<UserProvider>();
+    await userProvider.syncPrestataireVerificationIfNeeded();
+    if (!mounted) return;
+    if (userProvider.hasAllRequiredPrestataireDocuments) {
+      context.go(AppRoutes.prestataireValidation);
+      return;
+    }
+    final existing = <String, PrestataireDocument>{};
+    for (final doc in userProvider.prestataireDocuments) {
+      if (doc.fichierUrl.trim().isEmpty) continue;
+      existing[doc.typeCode] = doc;
+    }
+    setState(() {
+      _existingByType
+        ..clear()
+        ..addAll(existing);
+      _checkingExisting = false;
+    });
+  }
+
+  String? _displayFileName(String typeCode) {
+    final picked = _pickedFiles[typeCode];
+    if (picked != null && picked.name.isNotEmpty) return picked.name;
+    final existing = _existingByType[typeCode];
+    final name = existing?.nomFichier?.trim();
+    if (name != null && name.isNotEmpty) return name;
+    if (existing != null) return 'Document déjà envoyé';
+    return null;
+  }
+
+  bool _hasFileFor(String typeCode) =>
+      _pickedFiles[typeCode] != null || _existingByType.containsKey(typeCode);
 
   @override
   Widget build(BuildContext context) {
+    if (_checkingExisting) {
+      return const Scaffold(
+        backgroundColor: Colors.white,
+        body: Center(child: CircularProgressIndicator()),
+      );
+    }
+
     SizeConfig().init(context);
     final utilities = Utilities();
 
@@ -62,7 +107,7 @@ class _PrestataireUploadDocumentsState
             icon: const Icon(Icons.logout, color: Colors.red),
             tooltip: 'Déconnexion',
             onPressed: () async {
-              await context.read<UserProvider>().logout();
+              await AppNavigation.signOut(context);
               if (!context.mounted) return;
               AppNavigation.goWelcome(context);
             },
@@ -70,7 +115,7 @@ class _PrestataireUploadDocumentsState
         ],
       ),
       body: SafeArea(
-        child: SingleChildScrollView(
+        child: KeyboardDismissScrollView(
           padding: EdgeInsets.symmetric(
             horizontal: SizeConfig.blockSizeHorizontal * 6,
             vertical: SizeConfig.blockSizeVertical * 3,
@@ -79,7 +124,7 @@ class _PrestataireUploadDocumentsState
             crossAxisAlignment: CrossAxisAlignment.center,
             children: [
               Text(
-                'Pour activer votre compte prestataire, merci de déposer tous les documents requis.',
+                'Pour activer votre compte prestataire, merci de déposer les 4 documents requis.',
                 textAlign: TextAlign.center,
                 style: TextStyle(
                   fontSize: SizeConfig.fontSize(
@@ -93,7 +138,8 @@ class _PrestataireUploadDocumentsState
                 _buildUploadSection(
                   typeCode: doc['typeCode']!,
                   title: doc['label']!,
-                  file: _files[doc['typeCode']!],
+                  fileName: _displayFileName(doc['typeCode']!),
+                  hasFile: _hasFileFor(doc['typeCode']!),
                   onTap: () => _pickFileFor(doc['typeCode']!),
                 ),
                 SizedBox(height: SizeConfig.blockSizeVertical * 2.4),
@@ -145,7 +191,8 @@ class _PrestataireUploadDocumentsState
   Widget _buildUploadSection({
     required String typeCode,
     required String title,
-    required PlatformFile? file,
+    required String? fileName,
+    required bool hasFile,
     required VoidCallback onTap,
   }) {
     final utilities = Utilities();
@@ -190,13 +237,13 @@ class _PrestataireUploadDocumentsState
                       SizedBox(
                         width: SizeConfig.blockSizeHorizontal * 45,
                         child: Text(
-                          file?.name ?? 'doc_pick_hint'.tr(),
+                          fileName ?? 'doc_pick_hint'.tr(),
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,
                           style: TextStyle(
-                            color: file == null
-                                ? utilities.colorGreyDark
-                                : Colors.black87,
+                            color: hasFile
+                                ? Colors.black87
+                                : utilities.colorGreyDark,
                             fontSize: SizeConfig.fontSize(
                               SizeConfig.blockSizeHorizontal * 3.0,
                             ),
@@ -228,52 +275,62 @@ class _PrestataireUploadDocumentsState
     final file = await DocumentPickerHelper.pickDocument(context);
     if (!mounted || file == null) return;
     setState(() {
-      _files[typeCode] = file;
+      _pickedFiles[typeCode] = file;
     });
   }
 
   Future<void> _onSubmit() async {
+    final userProvider = Provider.of<UserProvider>(context, listen: false);
+    final missing = _requiredDocs
+        .where((doc) => !_hasFileFor(doc['typeCode']!))
+        .map((doc) => doc['label']!)
+        .toList();
+    if (missing.isNotEmpty) {
+      Utilities().showMesage(
+        context,
+        'error',
+        'Veuillez fournir les 4 documents requis.',
+      );
+      return;
+    }
+
+    final documents = <Map<String, String>>[];
+
     for (final doc in _requiredDocs) {
-      if (_files[doc['typeCode']!] == null) {
+      final typeCode = doc['typeCode']!;
+      final picked = _pickedFiles[typeCode];
+      if (picked == null) continue;
+      final up = await Authcontroller.instance.uploadDocument(
+        path: picked.path,
+        bytes: picked.bytes?.isNotEmpty == true ? picked.bytes : null,
+        name: safePickFileName(picked),
+      );
+      if (up.url == null || up.url!.isEmpty) {
+        if (!mounted) return;
         Utilities().showMesage(
           context,
           'error',
-          'Merci de sélectionner tous les documents requis.',
+          up.error ?? 'Échec de l\'upload: ${doc['label']}',
         );
         return;
       }
+      documents.add({
+        'typeCode': typeCode,
+        'fichierUrl': up.url!,
+        'nomFichier': picked.name,
+      });
+    }
+
+    if (documents.isEmpty) {
+      if (!mounted) return;
+      context.go(AppRoutes.prestataireValidation);
+      return;
     }
 
     setState(() {
       _isSubmitting = true;
     });
     try {
-      final userProvider = Provider.of<UserProvider>(context, listen: false);
-      final documents = <Map<String, String>>[];
-
-      for (final doc in _requiredDocs) {
-        final file = _files[doc['typeCode']!]!;
-        final up = await Authcontroller.instance.uploadDocument(
-          path: file.path,
-          bytes: file.bytes?.isNotEmpty == true ? file.bytes : null,
-          name: safePickFileName(file),
-        );
-        if (up.url == null || up.url!.isEmpty) {
-          if (!mounted) return;
-          Utilities().showMesage(
-            context,
-            'error',
-            up.error ?? 'Échec de l\'upload: ${doc['label']}',
-          );
-          return;
-        }
-        documents.add({
-          'typeCode': doc['typeCode']!,
-          'fichierUrl': up.url!,
-          'nomFichier': file.name,
-        });
-      }
-
       var res = await PrestatairesController.instance.updateMyDocuments(
         token: userProvider.token ?? '',
         documents: documents,
@@ -287,12 +344,18 @@ class _PrestataireUploadDocumentsState
       }
       if (!mounted) return;
       if (res.success == true) {
+        await userProvider.refreshVerificationStatus();
+        if (!mounted) return;
         Utilities().showMesage(
           context,
           'success',
           'Documents envoyés. Vérification en cours.',
         );
-        context.go(AppRoutes.prestataireValidation);
+        context.go(
+          userProvider.hasAllRequiredPrestataireDocuments
+              ? AppRoutes.prestataireValidation
+              : AppRoutes.prestataireDocuments,
+        );
       } else {
         Utilities().showMesage(
           context,

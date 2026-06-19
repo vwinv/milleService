@@ -1,5 +1,6 @@
 import 'package:easy_localization/easy_localization.dart';
 import 'package:flutter/material.dart';
+import 'package:milleservices/services/utilities.dart';
 import 'package:milleservices/widgets/customButton.dart';
 import 'package:provider/provider.dart';
 import 'package:milleservices/models/user.dart';
@@ -11,7 +12,8 @@ import 'package:milleservices/navigation/app_navigation.dart';
 import 'package:milleservices/providers/settings_provider.dart';
 import 'package:milleservices/services/app_locale.dart';
 import 'package:milleservices/services/sizeConfig.dart';
-import 'package:milleservices/services/utilities.dart';
+import 'package:milleservices/services/deactivate_account_flow.dart';
+
 class ProfilParticulier extends StatefulWidget {
   const ProfilParticulier({super.key});
 
@@ -31,8 +33,7 @@ class _ProfilParticulierState extends State<ProfilParticulier> {
     final settings = context.watch<SettingsProvider>();
 
     if (user == null) {
-      final waiting =
-          !userProvider.initialLoadDone || userProvider.isLoading;
+      final waiting = !userProvider.initialLoadDone || userProvider.isLoading;
       final currentCode =
           settings.selectedLocale?.languageCode ?? context.locale.languageCode;
       final currentLabel = currentCode == 'en'
@@ -49,7 +50,10 @@ class _ProfilParticulierState extends State<ProfilParticulier> {
           ),
           title: Text(
             'profil_title'.tr(),
-            style: const TextStyle(color: Colors.black, fontWeight: FontWeight.bold),
+            style: const TextStyle(
+              color: Colors.black,
+              fontWeight: FontWeight.bold,
+            ),
           ),
         ),
         body: waiting
@@ -132,7 +136,8 @@ class _ProfilParticulierState extends State<ProfilParticulier> {
                     ),
                     SizedBox(height: SizeConfig.blockSizeVertical * 2),
                     TextButton(
-                      onPressed: () => AppNavigation.goPrestataireLogin(context),
+                      onPressed: () =>
+                          AppNavigation.goPrestataireLogin(context),
                       child: Text(
                         'profil_guest_prestataire_link'.tr(),
                         style: TextStyle(
@@ -151,7 +156,9 @@ class _ProfilParticulierState extends State<ProfilParticulier> {
     }
     final currentCode =
         settings.selectedLocale?.languageCode ?? context.locale.languageCode;
-    final currentLabel = currentCode == 'en' ? 'profil_lang_en'.tr() : 'profil_lang_fr'.tr();
+    final currentLabel = currentCode == 'en'
+        ? 'profil_lang_en'.tr()
+        : 'profil_lang_fr'.tr();
 
     return Scaffold(
       backgroundColor: Colors.white,
@@ -189,7 +196,8 @@ class _ProfilParticulierState extends State<ProfilParticulier> {
                     builder: (context) {
                       final r = SizeConfig.blockSizeHorizontal * 11;
                       final d = r * 2;
-                      final hasPhoto = avatarUrl != null &&
+                      final hasPhoto =
+                          avatarUrl != null &&
                           avatarUrl.toString().trim().isNotEmpty;
                       return SizedBox(
                         width: d,
@@ -203,13 +211,11 @@ class _ProfilParticulierState extends State<ProfilParticulier> {
                                   height: d,
                                   fit: BoxFit.cover,
                                   alignment: Alignment.center,
-                                  errorBuilder: (_, __, ___) =>
-                                      ColoredBox(
+                                  errorBuilder: (_, __, ___) => ColoredBox(
                                     color: Utilities().colorGreyLight,
                                     child: Icon(
                                       Icons.person,
-                                      size:
-                                          SizeConfig.blockSizeHorizontal * 14,
+                                      size: SizeConfig.blockSizeHorizontal * 14,
                                       color: Utilities().colorGreyDark,
                                     ),
                                   ),
@@ -218,8 +224,7 @@ class _ProfilParticulierState extends State<ProfilParticulier> {
                                   color: Utilities().colorGreyLight,
                                   child: Icon(
                                     Icons.person,
-                                    size:
-                                        SizeConfig.blockSizeHorizontal * 14,
+                                    size: SizeConfig.blockSizeHorizontal * 14,
                                     color: Utilities().colorGreyDark,
                                   ),
                                 ),
@@ -346,14 +351,13 @@ class _ProfilParticulierState extends State<ProfilParticulier> {
                       'success',
                       'profil_become_provider_success'.tr(),
                     );
-                    await context.read<UserProvider>().logout();
+                    await AppNavigation.signOut(context);
                     AppNavigation.goWelcome(context);
                   } else {
                     Utilities().showMesage(
                       context,
                       'error',
-                      res.message ??
-                          'profil_become_provider_failed'.tr(),
+                      res.message ?? 'profil_become_provider_failed'.tr(),
                     );
                   }
                 },
@@ -386,11 +390,11 @@ class _ProfilParticulierState extends State<ProfilParticulier> {
 
             SizedBox(height: SizeConfig.blockSizeVertical * 2),
             TextButton(
-        onPressed: () async {
-          context.read<AuthResumeProvider>().clear();
-          await userProvider.logout();
-          if (!context.mounted) return;
-          AppNavigation.goParticulierHome(context);
+              onPressed: () async {
+                context.read<AuthResumeProvider>().clear();
+                await AppNavigation.signOut(context);
+                if (!context.mounted) return;
+                AppNavigation.goParticulierHome(context);
               },
               child: Text(
                 'profil_logout'.tr(),
@@ -402,6 +406,7 @@ class _ProfilParticulierState extends State<ProfilParticulier> {
                 ),
               ),
             ),
+            const Center(child: DeleteAccountButton()),
           ],
         ),
       ),

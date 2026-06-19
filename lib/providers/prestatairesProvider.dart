@@ -51,6 +51,16 @@ class PrestatairesProvider extends ChangeNotifier {
   String? _searchError;
   String? get searchError => _searchError;
 
+  /// Adresse saisie sur « Demander un service » pour la dernière recherche.
+  String? _lastSearchAddress;
+  String? get lastSearchAddress => _lastSearchAddress;
+
+  void clearLastSearchAddress() {
+    if (_lastSearchAddress == null) return;
+    _lastSearchAddress = null;
+    notifyListeners();
+  }
+
   // Catalogue photos du prestataire connecté
   List<PrestatairePhoto> _myPhotos = [];
   List<PrestatairePhoto> get myPhotos => _myPhotos;
@@ -335,39 +345,50 @@ class PrestatairesProvider extends ChangeNotifier {
   }
 
   /// Lance la recherche de prestataires (service, tarif, date si planifier).
+  /// [searchLat] / [searchLng] : position issue du champ adresse saisi par l'utilisateur.
   Future<void> loadSearch({
     String? serviceId,
     double? tarifMin,
     double? tarifMax,
     String? date,
     required UserProvider userProvider,
+    double? searchLat,
+    double? searchLng,
+    String? searchAddress,
   }) async {
     _searchLoading = true;
     _searchError = null;
     _searchResults = [];
+    final trimmedAddress = searchAddress?.trim();
+    if (trimmedAddress != null && trimmedAddress.isNotEmpty) {
+      _lastSearchAddress = trimmedAddress;
+    }
     notifyListeners();
 
-    double? searchLat;
-    double? searchLng;
-    if (Utilities.useRealtimeLocation) {
-      final device = await DeviceLocationService.getCurrentLatLngOrNull();
-      if (device != null) {
-        searchLat = device.latitude;
-        searchLng = device.longitude;
+    double? apiLat = searchLat;
+    double? apiLng = searchLng;
+
+    if (apiLat == null || apiLng == null) {
+      if (Utilities.useRealtimeLocation) {
+        final device = await DeviceLocationService.getCurrentLatLngOrNull();
+        if (device != null) {
+          apiLat = device.latitude;
+          apiLng = device.longitude;
+        }
       }
-    }
-    if (searchLat == null || searchLng == null) {
-      final u = userProvider.user;
-      if (u?.latitude != null && u?.longitude != null) {
-        searchLat = (u!.latitude as num).toDouble();
-        searchLng = (u.longitude as num).toDouble();
+      if (apiLat == null || apiLng == null) {
+        final u = userProvider.user;
+        if (u?.latitude != null && u?.longitude != null) {
+          apiLat = (u!.latitude as num).toDouble();
+          apiLng = (u.longitude as num).toDouble();
+        }
       }
-    }
-    if (!Utilities.useRealtimeLocation) {
-      final byAddress = await _resolveProfileAddressLatLng(userProvider);
-      if (byAddress != null) {
-        searchLat = byAddress.lat;
-        searchLng = byAddress.lng;
+      if (!Utilities.useRealtimeLocation) {
+        final byAddress = await _resolveProfileAddressLatLng(userProvider);
+        if (byAddress != null) {
+          apiLat = byAddress.lat;
+          apiLng = byAddress.lng;
+        }
       }
     }
 
@@ -376,8 +397,6 @@ class PrestatairesProvider extends ChangeNotifier {
         userProvider.token == null ||
         userProvider.token!.isEmpty;
 
-    double? apiLat = searchLat;
-    double? apiLng = searchLng;
     if (isGuest) {
       if (apiLat == null || apiLng == null) {
         final device = await DeviceLocationService.getCurrentLatLngOrNull();

@@ -13,7 +13,7 @@ import 'package:milleservices/screens/settings.dart';
 /// Pour un prestataire, [UserProvider.refreshVerificationStatus] est attendu
 /// **avant** de choisir l’écran (documents / validation / abonnement / home).
 /// Sinon, juste après l’inscription, la liste des documents est encore vide
-/// et l’app renvoie à tort vers [PrestataireUploadDocuments].
+/// et l’app renvoie à tort vers l’écran d’upload.
 Widget resolveHome({
   required SettingsProvider settings,
   required UserProvider userProvider,
@@ -78,12 +78,12 @@ Widget _resolveHomeSync({
       userProvider.user!.statutVerification?.toString().toUpperCase() ?? '';
   if (userProvider.user?.role.toLowerCase() == 'prestataire') {
     if (statutVerif == 'NON_VERIFIE' || statutVerif == 'EN_ATTENTE') {
-      if (userProvider.prestataireDocuments.isEmpty) {
+      if (!userProvider.hasAllRequiredPrestataireDocuments) {
         return const PrestataireUploadDocuments();
       }
       return const PrestataireValidateProfil();
     }
-    if (statutVerif == 'REFUSE') {
+    if (statutVerif == 'REFUSE' || userProvider.hasRefusedPrestataireDocument) {
       return const PrestataireDocumentsRefuses();
     }
     if (!userProvider.hasAbonnementValide) {

@@ -1,6 +1,5 @@
 import 'dart:async';
 import 'dart:convert';
-import 'dart:io';
 
 import 'package:dio/dio.dart';
 import 'package:flutter_foreground_task/flutter_foreground_task.dart';
@@ -13,15 +12,6 @@ import 'package:shared_preferences/shared_preferences.dart';
 @pragma('vm:entry-point')
 void liveLocationTaskStartCallback() {
   FlutterForegroundTask.setTaskHandler(LiveLocationTaskHandler());
-}
-
-String _liveLocationBackendBaseUrl() {
-  const env = String.fromEnvironment('API_BASE_URL');
-  if (env.isNotEmpty) return env;
-  if (Platform.isAndroid) {
-    return 'http://10.0.2.2:3001';
-  }
-  return 'http://127.0.0.1:3001';
 }
 
 class LiveLocationTaskHandler extends TaskHandler {
@@ -57,7 +47,7 @@ class LiveLocationTaskHandler extends TaskHandler {
     final ll = await DeviceLocationService.getCurrentLatLngOrNull();
     if (ll == null) return;
 
-    final baseUrl = _liveLocationBackendBaseUrl();
+    final baseUrl = resolveBackendBaseUrl();
     final dio = Dio(
       BaseOptions(
         baseUrl: baseUrl,
@@ -66,16 +56,14 @@ class LiveLocationTaskHandler extends TaskHandler {
       ),
     );
 
-    final path =
-        role == 'PRESTATAIRE' ? '/prestataires/me' : '/auth/me/particulier';
+    final path = role == 'PRESTATAIRE'
+        ? '/prestataires/me'
+        : '/auth/me/particulier';
 
     try {
       final response = await dio.patch(
         path,
-        data: jsonEncode({
-          'latitude': ll.latitude,
-          'longitude': ll.longitude,
-        }),
+        data: jsonEncode({'latitude': ll.latitude, 'longitude': ll.longitude}),
         options: Options(
           headers: {
             'Content-Type': 'application/json',
@@ -88,8 +76,7 @@ class LiveLocationTaskHandler extends TaskHandler {
       final code = response.statusCode ?? 500;
       final okHttp = code >= 200 && code < 300;
       final body = response.data;
-      final ok = okHttp ||
-          (body is Map && body['success'] == true);
+      final ok = okHttp || (body is Map && body['success'] == true);
 
       if (ok) {
         await LiveLocationSync.markServerSuccess();

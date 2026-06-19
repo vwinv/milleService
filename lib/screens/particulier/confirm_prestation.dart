@@ -1,6 +1,5 @@
 import 'package:easy_localization/easy_localization.dart';
 import 'package:flutter/material.dart';
-import 'package:geocoding/geocoding.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:milleservices/controllers/authController.dart';
 import 'package:milleservices/controllers/prestationsController.dart';
@@ -8,12 +7,13 @@ import 'package:milleservices/models/prestation.dart';
 import 'package:milleservices/models/prestataire.dart';
 import 'package:milleservices/providers/userProvider.dart';
 import 'package:milleservices/navigation/app_navigation.dart';
-import 'package:milleservices/router/route_extras.dart';
+import 'package:milleservices/services/address_line_helper.dart';
 import 'package:milleservices/services/device_location_service.dart';
 import 'package:milleservices/services/image_helper.dart';
 import 'package:milleservices/services/sizeConfig.dart';
 import 'package:milleservices/services/utilities.dart';
 import 'package:milleservices/widgets/customButton.dart';
+import 'package:milleservices/widgets/keyboard_dismiss.dart';
 import 'package:provider/provider.dart';
 
 /// Écran intermédiaire : le particulier remplit la description de la prestation
@@ -69,6 +69,12 @@ class _ConfirmPrestationState extends State<ConfirmPrestation> {
     final adresse = widget.adresseParticulier?.toString().trim();
     if (adresse != null && adresse.isNotEmpty) {
       _adresseController.text = adresse;
+    } else {
+      final profile =
+          context.read<UserProvider>().user?.adresse?.toString().trim();
+      if (profile != null && profile.isNotEmpty) {
+        _adresseController.text = profile;
+      }
     }
   }
 
@@ -196,28 +202,6 @@ class _ConfirmPrestationState extends State<ConfirmPrestation> {
     return i >= 0 && i < path.length - 1 ? path.substring(i + 1) : 'demande.jpg';
   }
 
-  String _placemarkToAddressLine(Placemark p) {
-    final parts = <String>[];
-    void push(String? s) {
-      final t = s?.trim() ?? '';
-      if (t.isNotEmpty && !parts.contains(t)) parts.add(t);
-    }
-
-    final street = (p.street ?? '').trim();
-    if (street.isEmpty) {
-      push(p.name);
-      push(p.thoroughfare);
-    } else {
-      push(p.street);
-    }
-    push(p.subLocality);
-    push(p.locality);
-    push(p.postalCode);
-    push(p.administrativeArea);
-    push(p.country);
-    return parts.join(', ');
-  }
-
   Future<void> _useCurrentLocationForAddress() async {
     if (_locatingAddress) return;
     setState(() => _locatingAddress = true);
@@ -232,24 +216,9 @@ class _ConfirmPrestationState extends State<ConfirmPrestation> {
         );
         return;
       }
-      List<Placemark> placemarks;
-      try {
-        placemarks =
-            await placemarkFromCoordinates(latLng.latitude, latLng.longitude);
-      } catch (_) {
-        placemarks = [];
-      }
+      final line = await AddressLineHelper.reverseGeocodeFromLatLng(latLng);
       if (!mounted) return;
-      if (placemarks.isEmpty) {
-        Utilities().showMesage(
-          context,
-          'error',
-          'confirm_address_reverse_failed'.tr(),
-        );
-        return;
-      }
-      final line = _placemarkToAddressLine(placemarks.first);
-      if (line.isEmpty) {
+      if (line == null || line.isEmpty) {
         Utilities().showMesage(
           context,
           'error',
@@ -310,7 +279,7 @@ class _ConfirmPrestationState extends State<ConfirmPrestation> {
       ),
       body: Form(
         key: _formKey,
-        child: SingleChildScrollView(
+        child: KeyboardDismissScrollView(
           padding: EdgeInsets.symmetric(
             horizontal: SizeConfig.blockSizeHorizontal * 5,
           ),

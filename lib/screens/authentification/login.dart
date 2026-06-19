@@ -6,6 +6,7 @@ import 'package:go_router/go_router.dart';
 import 'package:milleservices/services/sizeConfig.dart';
 import 'package:milleservices/services/utilities.dart';
 import 'package:milleservices/widgets/auth_keyboard_aware_layout.dart';
+import 'package:milleservices/widgets/keyboard_dismiss.dart';
 import 'package:milleservices/widgets/customButton.dart';
 import 'package:milleservices/widgets/customTextField.dart';
 import 'package:provider/provider.dart';
@@ -106,6 +107,10 @@ class _LoginState extends State<Login> with TickerProviderStateMixin {
       final res = await userProvider.login(email, password, role: role);
       if (res.success == true) {
         if (mounted) {
+          if (type == 'particulier') {
+            await AppNavigation.markParticulierOnboardingDone(context);
+          }
+          if (!mounted) return;
           Utilities().showMesage(context, 'success', "login_success".tr());
           AppNavigation.continueAfterAuth(context);
         }
@@ -125,7 +130,7 @@ class _LoginState extends State<Login> with TickerProviderStateMixin {
       }
     }
 
-    return SingleChildScrollView(
+    return KeyboardDismissScrollView(
       padding: AuthKeyboardAwareLayout.formScrollPadding(context),
       key: type == "particulier" ? formParticulierKey : formPrestataireKey,
       child: Form(

@@ -1,13 +1,14 @@
 import 'dart:async';
 
+import 'package:dio/dio.dart';
 import 'package:flutter/foundation.dart';
-import 'package:flutter/scheduler.dart';
 import 'package:milleservices/controllers/authController.dart';
 import 'package:milleservices/controllers/prestatairesController.dart';
 import 'package:milleservices/controllers/userController.dart';
 import 'package:milleservices/models/abonnement.dart';
 import 'package:milleservices/models/offre.dart';
 import 'package:milleservices/models/prestataire_document.dart';
+import 'package:milleservices/services/prestataire_required_documents.dart';
 import 'package:milleservices/models/user.dart';
 import 'package:milleservices/models/response.dart';
 import 'package:milleservices/services/live_location_foreground_service.dart';
@@ -50,6 +51,13 @@ class UserProvider extends ChangeNotifier {
   List<PrestataireDocument> _prestataireDocuments = [];
   List<PrestataireDocument> get prestataireDocuments => _prestataireDocuments;
 
+  bool get hasAllRequiredPrestataireDocuments =>
+      prestataireHasAllRequiredDocuments(_prestataireDocuments);
+
+  bool get hasRefusedPrestataireDocument => _prestataireDocuments.any(
+        (d) => d.statut.toString().toUpperCase() == 'REFUSE',
+      );
+
   bool get isAuthenticated => _token != null;
 
   bool _isLoading = false;
@@ -88,6 +96,12 @@ class UserProvider extends ChangeNotifier {
   Future<void> syncPrestataireAbonnementIfNeeded() async {
     if (!isPrestataire || _token == null || _token!.isEmpty) return;
     await refreshAbonnementCourant();
+  }
+
+  /// Resynchronise statut + documents prestataire depuis l'API (routing onboarding).
+  Future<void> syncPrestataireVerificationIfNeeded() async {
+    if (!isPrestataire || _token == null || _token!.isEmpty) return;
+    await refreshVerificationStatus();
   }
 
   /// Rafraîchit le statut de vérification du prestataire connecté
@@ -177,8 +191,6 @@ class UserProvider extends ChangeNotifier {
       _token = payload['access_token'];
       _Rtoken = payload['refresh_token'];
 
-      notifyListeners();
-
       final prefs = await SharedPreferences.getInstance();
       await prefs.setString("token", _token!);
       await prefs.setString("Rtoken", _Rtoken!);
@@ -186,9 +198,11 @@ class UserProvider extends ChangeNotifier {
       await _persistAbonnementCache(prefs);
       await _purgeInvalidAbonnementCache();
       if (isPrestataire) {
+        await syncPrestataireVerificationIfNeeded();
         await syncPrestataireAbonnementIfNeeded();
       }
       await LiveLocationForegroundService.startIfAuthenticated(_user, _token);
+      notifyListeners();
     }
     setLoading(false);
     return data;
@@ -220,8 +234,6 @@ class UserProvider extends ChangeNotifier {
         _token = payload['access_token'];
         _Rtoken = payload['refresh_token'];
 
-        notifyListeners();
-
         final prefs = await SharedPreferences.getInstance();
         await prefs.setString("user", User.encode(user!));
         await prefs.setString("token", _token!);
@@ -229,9 +241,11 @@ class UserProvider extends ChangeNotifier {
         await _persistAbonnementCache(prefs);
         await _purgeInvalidAbonnementCache();
         if (isPrestataire) {
+          await syncPrestataireVerificationIfNeeded();
           await syncPrestataireAbonnementIfNeeded();
         }
         await LiveLocationForegroundService.startIfAuthenticated(_user, _token);
+        notifyListeners();
       }
       return data;
     } finally {
@@ -274,13 +288,12 @@ class UserProvider extends ChangeNotifier {
     );
     _avatarUrlOverride = prefs.getString("avatarUrl");
     await _purgeInvalidAbonnementCache();
+    if (isPrestataire && _token != null && _token!.isNotEmpty) {
+      await syncPrestataireVerificationIfNeeded();
+      await syncPrestataireAbonnementIfNeeded();
+    }
     _initialLoadDone = true;
     notifyListeners();
-    if (isPrestataire && _token != null && _token!.isNotEmpty) {
-      SchedulerBinding.instance.addPostFrameCallback((_) {
-        unawaited(syncPrestataireAbonnementIfNeeded());
-      });
-    }
     await LiveLocationForegroundService.startIfAuthenticated(_user, _token);
   }
 
@@ -361,6 +374,9 @@ class UserProvider extends ChangeNotifier {
     _abonnement = null;
     _abonnementExpiredFlag = false;
     _avatarUrlOverride = null;
+    _prestataireDocuments = [];
+    _offres = [];
+    _emailNotVerified = false;
     notifyListeners();
 
     final prefs = await SharedPreferences.getInstance();
@@ -437,9 +453,20 @@ class UserProvider extends ChangeNotifier {
         print('UserProvider: Échec du refresh token: ${data.message}');
         await logout();
       }
+    } on DioException catch (e) {
+      final status = e.response?.statusCode;
+      if (status == 401 || status == 403) {
+        print('UserProvider: Refresh token refusé ($status), déconnexion');
+        await logout();
+      } else {
+        print(
+          'UserProvider: Erreur réseau refresh token (session conservée): $e',
+        );
+      }
     } catch (e) {
-      print('UserProvider: Erreur lors du refresh token: $e');
-      await logout();
+      print(
+        'UserProvider: Erreur inattendue refresh token (session conservée): $e',
+      );
     }
   }
 
@@ -636,6 +663,8 @@ class UserProvider extends ChangeNotifier {
     String? adresse,
     String? bio,
     List<String>? serviceIds,
+    double? latitude,
+    double? longitude,
   }) async {
     if (_token == null) {
       return ResponseData(
@@ -656,6 +685,8 @@ class UserProvider extends ChangeNotifier {
         adresse: adresse,
         bio: bio,
         serviceIds: serviceIds,
+        latitude: latitude,
+        longitude: longitude,
       );
       if (data.status == 401) {
         await refreshToken();
@@ -667,6 +698,8 @@ class UserProvider extends ChangeNotifier {
             adresse: adresse,
             bio: bio,
             serviceIds: serviceIds,
+            latitude: latitude,
+            longitude: longitude,
           );
         }
       }
@@ -688,8 +721,8 @@ class UserProvider extends ChangeNotifier {
           createdAt: u.createdAt,
           updatedAt: u.updatedAt,
           role: u.role,
-          latitude: u.latitude,
-          longitude: u.longitude,
+          latitude: latitude ?? u.latitude,
+          longitude: longitude ?? u.longitude,
           statutVerificationPrestataire: u.statutVerificationPrestataire,
         );
         notifyListeners();
@@ -710,6 +743,8 @@ class UserProvider extends ChangeNotifier {
     String? prenom,
     String? telephone,
     String? adresse,
+    double? latitude,
+    double? longitude,
   }) async {
     if (_token == null) {
       return ResponseData(
@@ -729,6 +764,8 @@ class UserProvider extends ChangeNotifier {
         prenom: prenom,
         telephone: telephone,
         adresse: adresse,
+        latitude: latitude,
+        longitude: longitude,
       );
       if (data.status == 401) {
         await refreshToken();
@@ -739,6 +776,8 @@ class UserProvider extends ChangeNotifier {
             prenom: prenom,
             telephone: telephone,
             adresse: adresse,
+            latitude: latitude,
+            longitude: longitude,
           );
         }
       }
@@ -760,8 +799,8 @@ class UserProvider extends ChangeNotifier {
           createdAt: u.createdAt,
           updatedAt: u.updatedAt,
           role: u.role,
-          latitude: u.latitude,
-          longitude: u.longitude,
+          latitude: latitude ?? u.latitude,
+          longitude: longitude ?? u.longitude,
           statutVerificationPrestataire: u.statutVerificationPrestataire,
         );
         notifyListeners();
@@ -873,18 +912,23 @@ class UserProvider extends ChangeNotifier {
 
   Future<ResponseData> deleteAccount() async {
     setLoading(true);
-    var data = await authcontroller.deactivateMyAccount(_token!);
-    if (data.status == 401) {
-      await refreshToken();
-      if (_token != null) {
-        await Future.delayed(const Duration(seconds: 1));
-        data = await authcontroller.deactivateMyAccount(_token!);
+    try {
+      var data = await authcontroller.deactivateMyAccount(_token!);
+      if (data.status == 401) {
+        await refreshToken();
+        if (_token != null) {
+          await Future.delayed(const Duration(seconds: 1));
+          data = await authcontroller.deactivateMyAccount(_token!);
+        }
       }
+      final deactivated = data.success == true ||
+          (data.status != null && data.status! >= 200 && data.status! < 300);
+      if (deactivated) {
+        await logout();
+      }
+      return data;
+    } finally {
+      setLoading(false);
     }
-    if (data.success == true) {
-      await logout();
-    }
-    setLoading(false);
-    return data;
   }
 }

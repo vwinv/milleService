@@ -373,7 +373,9 @@ class Authcontroller {
         "longitude": user.longitude,
       };
       if (user.role == 'PRESTATAIRE') {
-        body["name"] = user.nom;
+        final prenom = (user.prenom ?? '').toString().trim();
+        final nom = (user.nom ?? '').toString().trim();
+        body["name"] = [prenom, nom].where((s) => s.isNotEmpty).join(' ');
         if (documents != null && documents.isNotEmpty) {
           body["documents"] = documents;
         }
@@ -670,9 +672,11 @@ class Authcontroller {
         ),
       );
       ResponseData finalResponse = ResponseData.fromJson({
-        "success": response.data['success'],
-        "data": response.data['data'],
+        "success": response.data['success'] ?? true,
+        "data": response.data['data'] ?? response.data,
+        "message": response.data['message'] ?? response.data['data']?['message'] ?? '',
         "status": response.statusCode,
+        "emailNotVerified": false,
       });
       return finalResponse;
     } on DioException catch (e) {

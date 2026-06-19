@@ -4,19 +4,25 @@ import 'package:milleservices/services/fcm_debug_log.dart';
 import 'package:milleservices/services/navigation.dart';
 import 'package:milleservices/services/sizeConfig.dart';
 
-/// URL du backend Nest (port 3001 par défaut).
-///
-/// - **Android émulateur** : `10.0.2.2` pointe vers la machine hôte.
-/// - **iOS simulateur / macOS** : `127.0.0.1` (éviter `10.0.2.2` sur iOS → connection refused).
-/// - **Téléphone physique** : définir l’IP de ton Mac/PC, ex. :
-///   `flutter run --dart-define=API_BASE_URL=http://192.168.1.10:3001`
+// =============================================================================
+// URL BACKEND — point unique à modifier pour tes tests (app + GPS arrière-plan)
+// =============================================================================
+//
+// Change la ligne active selon ton environnement :
+//
+//const String kBackendBaseUrl = 'http://127.0.0.1:3001'; // iOS sim / macOS
+// const String kBackendBaseUrl = 'http://10.0.2.2:3001'; // Android émulateur
+const String kBackendBaseUrl =
+    'https://milleservice-backend-aacp.onrender.com'; // Render
+//
+// Sans toucher le code (ex. téléphone physique → IP du Mac) :
+//   flutter run --dart-define=API_BASE_URL=http://192.168.1.10:3001
+//
+/// URL du backend Nest — utilisée partout (API, géocodage, sync GPS, etc.).
 String resolveBackendBaseUrl() {
   const env = String.fromEnvironment('API_BASE_URL');
   if (env.isNotEmpty) return env;
-  if (defaultTargetPlatform == TargetPlatform.android) {
-    return 'http://10.0.2.2:3001';
-  }
-  return 'http://127.0.0.1:3001';
+  return kBackendBaseUrl;
 }
 
 class Utilities {
@@ -32,9 +38,7 @@ class Utilities {
   /// Taux sur le montant « travail » seul ; la plateforme prend aussi les frais de service en intégral (voir [computePrestationBilling]).
   static const double systemCommissionRate = 0.35;
 
-  // Production : décommenter et adapter si besoin
-  String get baseUrl => "https://milleservice-backend-aacp.onrender.com";
-  //String get baseUrl => resolveBackendBaseUrl();
+  String get baseUrl => resolveBackendBaseUrl();
   String imagePath = "assets/images/";
   Color colorBlueDark = Color(0xFF020B51);
   Color colorBlueLight = Color(0xFFB4DBFF).withOpacity(0.5);

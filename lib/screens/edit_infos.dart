@@ -1,15 +1,19 @@
+import 'package:easy_localization/easy_localization.dart';
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:milleservices/controllers/authController.dart';
+import 'package:milleservices/controllers/geocodingController.dart';
 import 'package:milleservices/models/response.dart';
 import 'package:milleservices/providers/userProvider.dart';
 import 'package:milleservices/providers/prestatairesProvider.dart';
 import 'package:milleservices/navigation/app_navigation.dart';
+import 'package:milleservices/services/deactivate_account_flow.dart';
 import 'package:milleservices/services/image_helper.dart';
 import 'package:milleservices/services/sizeConfig.dart';
 import 'package:milleservices/services/utilities.dart';
 import 'package:milleservices/widgets/customTextField.dart';
 import 'package:milleservices/widgets/address_autocomplete_field.dart';
+import 'package:milleservices/widgets/keyboard_dismiss.dart';
 import 'package:provider/provider.dart';
 
 class EditInfos extends StatefulWidget {
@@ -43,6 +47,7 @@ class _EditInfosState extends State<EditInfos> {
 
   // Services sélectionnés (prestataire)
   final Set<String> _selectedServiceIds = {};
+  AddressSelection? _addressSelection;
 
   @override
   void initState() {
@@ -123,7 +128,7 @@ class _EditInfosState extends State<EditInfos> {
           ),
         ),
       ),
-      body: SingleChildScrollView(
+      body: KeyboardDismissScrollView(
         padding: EdgeInsets.symmetric(
           horizontal: SizeConfig.blockSizeHorizontal * 6,
           vertical: SizeConfig.blockSizeVertical * 2,
@@ -140,7 +145,8 @@ class _EditInfosState extends State<EditInfos> {
                     builder: (context) {
                       final r = SizeConfig.blockSizeHorizontal * 11;
                       final d = r * 2;
-                      final hasPhoto = avatarUrl != null &&
+                      final hasPhoto =
+                          avatarUrl != null &&
                           avatarUrl.toString().trim().isNotEmpty;
                       return SizedBox(
                         width: d,
@@ -154,8 +160,7 @@ class _EditInfosState extends State<EditInfos> {
                                   height: d,
                                   fit: BoxFit.cover,
                                   alignment: Alignment.center,
-                                  errorBuilder: (_, __, ___) =>
-                                      ColoredBox(
+                                  errorBuilder: (_, __, ___) => ColoredBox(
                                     color: Utilities().colorGreyLight,
                                     child: Icon(
                                       Icons.person,
@@ -396,6 +401,15 @@ class _EditInfosState extends State<EditInfos> {
                   height: SizeConfig.blockSizeVertical * 5,
                   width: SizeConfig.blockSizeHorizontal * 80,
                   validator: (value) => null,
+                  biasLat: user?.latitude is num
+                      ? (user!.latitude as num).toDouble()
+                      : null,
+                  biasLng: user?.longitude is num
+                      ? (user!.longitude as num).toDouble()
+                      : null,
+                  onSelectionChanged: (selection) {
+                    _addressSelection = selection;
+                  },
                 ),
               ],
             ),
@@ -529,54 +543,9 @@ class _EditInfosState extends State<EditInfos> {
                     vertical: SizeConfig.blockSizeVertical * 1.6,
                   ),
                 ),
-                onPressed: () async {
-                  final confirm = await showDialog<bool>(
-                    context: context,
-                    builder: (ctx) {
-                      return AlertDialog(
-                        title: const Text('Supprimer mon compte'),
-                        content: Text(
-                          'Êtes-vous sûr de vouloir désactiver votre compte ? '
-                          'Pour une éventuelle réactivation, vous devrez contacter notre équipe au ${Utilities().telephoneEquipe}.',
-                        ),
-                        actions: [
-                          TextButton(
-                            onPressed: () => Navigator.of(ctx).pop(false),
-                            child: const Text('Annuler'),
-                          ),
-                          TextButton(
-                            onPressed: () => Navigator.of(ctx).pop(true),
-                            child: const Text(
-                              'Confirmer',
-                              style: TextStyle(color: Colors.red),
-                            ),
-                          ),
-                        ],
-                      );
-                    },
-                  );
-                  if (confirm != true) return;
-
-                  final res = await userProvider.deleteAccount();
-                  if (!mounted) return;
-                  if (res.success == true) {
-                    Utilities().showMesage(
-                      context,
-                      'success',
-                      "Votre compte a été désactivé. Pour une réactivation, contactez notre équipe au ${Utilities().telephoneEquipe}.",
-                    );
-                    AppNavigation.goWelcome(context);
-                  } else {
-                    Utilities().showMesage(
-                      context,
-                      'error',
-                      res.message ??
-                          "Échec de la désactivation du compte. Veuillez réessayer.",
-                    );
-                  }
-                },
+                onPressed: () => confirmAndDeactivateAccount(context),
                 child: Text(
-                  'Supprimer mon compte',
+                  'profil_delete_account'.tr(),
                   style: TextStyle(
                     color: Colors.red,
                     fontSize: SizeConfig.fontSize(
@@ -598,6 +567,20 @@ class _EditInfosState extends State<EditInfos> {
     final user = userProvider.user;
     if (user == null) return;
 
+    final adresse = _adresseController.text.trim();
+    double? latitude;
+    double? longitude;
+    if (adresse.length >= 3) {
+      final coords = await GeocodingController().resolveCoordinates(
+        address: adresse,
+        selection: _addressSelection,
+      );
+      if (coords != null) {
+        latitude = coords.lat;
+        longitude = coords.lng;
+      }
+    }
+
     late final ResponseData res;
     setState(() => _isSavingInfos = true);
     try {
@@ -609,15 +592,15 @@ class _EditInfosState extends State<EditInfos> {
           telephone: _telephoneController.text.trim().isEmpty
               ? null
               : _telephoneController.text.trim(),
-          adresse: _adresseController.text.trim().isEmpty
-              ? null
-              : _adresseController.text.trim(),
+          adresse: adresse.isEmpty ? null : adresse,
           bio: _bioController.text.trim().isEmpty
               ? null
               : _bioController.text.trim(),
           serviceIds: _selectedServiceIds.isEmpty
               ? null
               : _selectedServiceIds.toList(),
+          latitude: latitude,
+          longitude: longitude,
         );
       } else {
         res = await userProvider.updateParticulierInfos(
@@ -630,9 +613,9 @@ class _EditInfosState extends State<EditInfos> {
           telephone: _telephoneController.text.trim().isEmpty
               ? null
               : _telephoneController.text.trim(),
-          adresse: _adresseController.text.trim().isEmpty
-              ? null
-              : _adresseController.text.trim(),
+          adresse: adresse.isEmpty ? null : adresse,
+          latitude: latitude,
+          longitude: longitude,
         );
       }
       if (!mounted) return;

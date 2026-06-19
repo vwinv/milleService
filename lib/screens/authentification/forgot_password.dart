@@ -4,6 +4,7 @@ import 'package:milleservices/services/sizeConfig.dart';
 import 'package:milleservices/services/utilities.dart';
 import 'package:milleservices/widgets/customButton.dart';
 import 'package:milleservices/widgets/customTextField.dart';
+import 'package:milleservices/widgets/keyboard_dismiss.dart';
 import 'package:provider/provider.dart';
 import 'package:milleservices/navigation/app_navigation.dart';
 
@@ -72,7 +73,7 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
         ),
       ),
       backgroundColor: Colors.white,
-      body: SingleChildScrollView(
+      body: KeyboardDismissScrollView(
         padding: EdgeInsets.symmetric(
           horizontal: SizeConfig.blockSizeHorizontal * 8,
           vertical: SizeConfig.blockSizeVertical * 2,

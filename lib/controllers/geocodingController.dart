@@ -39,15 +39,28 @@ class GeocodingController {
   }
 
   /// Appelle GET /geocoding/autocomplete?q=xxx et retourne les suggestions.
-  Future<List<AutocompleteSuggestion>> autocomplete(String query) async {
+  Future<List<AutocompleteSuggestion>> autocomplete(
+    String query, {
+    double? biasLat,
+    double? biasLng,
+  }) async {
     final trimmed = query.trim();
     if (trimmed.length < 2) return [];
 
     try {
+      final queryParameters = <String, dynamic>{'q': trimmed};
+      if (biasLat != null &&
+          biasLng != null &&
+          biasLat.isFinite &&
+          biasLng.isFinite) {
+        queryParameters['lat'] = biasLat;
+        queryParameters['lng'] = biasLng;
+      }
+
       // Le backend renvoie { success, data: [...], message, status }
       final response = await _dio.get<Map<String, dynamic>>(
         '/geocoding/autocomplete',
-        queryParameters: {'q': trimmed},
+        queryParameters: queryParameters,
       );
 
       final raw = response.data;
@@ -80,6 +93,55 @@ class GeocodingController {
     }
   }
 
+  /// Repli si l'autocomplétion Places ne renvoie rien (ex. clé sans Places sur le serveur).
+  Future<List<AutocompleteSuggestion>> geocodeFallbackSuggestions(
+    String query,
+  ) async {
+    final trimmed = query.trim();
+    if (trimmed.length < 3) return [];
+
+    const suffixes = [', Dakar, Sénégal', ', Sénégal', ''];
+    final seen = <String>{};
+    final out = <AutocompleteSuggestion>[];
+
+    for (final suffix in suffixes) {
+      final address = '$trimmed$suffix';
+      try {
+        final response = await _dio.get<Map<String, dynamic>>(
+          '/geocoding',
+          queryParameters: {'address': address},
+        );
+        final raw = response.data;
+        if (raw == null) continue;
+        final data = raw['data'] as Map<String, dynamic>? ?? raw;
+        if (data['found'] != true) continue;
+
+        final lat = data['lat'];
+        final lng = data['lng'];
+        if (lat is! num || lng is! num) continue;
+
+        final formatted = data['formattedAddress']?.toString().trim();
+        final displayName =
+            (formatted != null && formatted.isNotEmpty) ? formatted : address;
+        final key = displayName.toLowerCase();
+        if (seen.contains(key)) continue;
+        seen.add(key);
+
+        out.add(
+          AutocompleteSuggestion(
+            displayName: displayName,
+            lat: lat.toDouble(),
+            lng: lng.toDouble(),
+          ),
+        );
+        if (out.length >= 5) break;
+      } on DioException catch (_) {
+        continue;
+      }
+    }
+    return out;
+  }
+
   /// Résout un placeId Google en coordonnées.
   Future<({double lat, double lng})?> placeDetails(String placeId) async {
     final id = placeId.trim();
@@ -102,6 +164,57 @@ class GeocodingController {
       return null;
     }
   }
+
+  /// Résout les coordonnées d'une adresse : sélection (placeId) puis repli géocodage texte.
+  Future<({double lat, double lng})?> resolveCoordinates({
+    required String address,
+    AddressSelection? selection,
+  }) async {
+    if (selection?.hasCoordinates == true) {
+      return (lat: selection!.lat!, lng: selection.lng!);
+    }
+    final placeId = selection?.placeId?.trim() ?? '';
+    if (placeId.isNotEmpty) {
+      final fromPlace = await placeDetails(placeId);
+      if (fromPlace != null) return fromPlace;
+    }
+    return geocode(address);
+  }
+
+  /// Reverse geocoding via GET /geocoding/reverse?lat=&lng=
+  Future<String?> reverseGeocode(double lat, double lng) async {
+    if (!lat.isFinite || !lng.isFinite) return null;
+    try {
+      final response = await _dio.get<Map<String, dynamic>>(
+        '/geocoding/reverse',
+        queryParameters: {'lat': lat, 'lng': lng},
+      );
+      final raw = response.data;
+      if (raw == null) return null;
+      final data = raw['data'] as Map<String, dynamic>? ?? raw;
+      if (data['found'] != true) return null;
+      final line = data['formattedAddress']?.toString().trim();
+      return (line != null && line.isNotEmpty) ? line : null;
+    } on DioException catch (_) {
+      return null;
+    }
+  }
+}
+
+class AddressSelection {
+  final String displayName;
+  final String? placeId;
+  final double? lat;
+  final double? lng;
+
+  const AddressSelection({
+    required this.displayName,
+    this.placeId,
+    this.lat,
+    this.lng,
+  });
+
+  bool get hasCoordinates => lat != null && lng != null;
 }
 
 class AutocompleteSuggestion {

@@ -34,12 +34,26 @@ class SettingsProvider extends ChangeNotifier {
     notifyListeners();
   }
 
-  /// Mémorise que l'utilisateur a choisi le parcours particulier (accès invité).
+  /// Mémorise le parcours particulier (après connexion / inscription).
   Future<void> markGuestOnboardingDone() async {
     if (_guestOnboardingDone) return;
     _guestOnboardingDone = true;
     final prefs = await SharedPreferences.getInstance();
     await prefs.setBool(kGuestOnboardingDonePrefKey, true);
+    if (_loaded) {
+      notifyListeners();
+    }
+  }
+
+  /// Réinitialise le parcours invité (ex. déconnexion).
+  Future<void> clearGuestOnboardingDone() async {
+    if (!_guestOnboardingDone) {
+      final prefs = await SharedPreferences.getInstance();
+      if (!(prefs.getBool(kGuestOnboardingDonePrefKey) ?? false)) return;
+    }
+    _guestOnboardingDone = false;
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.remove(kGuestOnboardingDonePrefKey);
     if (_loaded) {
       notifyListeners();
     }

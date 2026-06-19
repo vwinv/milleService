@@ -22,19 +22,17 @@ String? resolveAppRedirect({
       userProvider.isAuthenticated && userProvider.user != null;
 
   if (!authenticated) {
-    if (settingsProvider.guestOnboardingDone &&
-        settingsProvider.locale == null) {
-      if (matchedLocation == AppRoutes.settings) {
+    if (settingsProvider.locale == null &&
+        matchedLocation != AppRoutes.settings) {
+      if (AppRoutes.isGuestAccessiblePath(matchedLocation) &&
+          matchedLocation != AppRoutes.loading) {
         return null;
       }
-      return AppRoutes.settings;
+      return AppRoutes.welcome;
     }
     if (AppRoutes.isGuestAccessiblePath(matchedLocation) &&
         matchedLocation != AppRoutes.loading) {
       return null;
-    }
-    if (settingsProvider.guestOnboardingDone) {
-      return AppRoutes.particulierHome;
     }
     return AppRoutes.welcome;
   }
@@ -57,10 +55,18 @@ String? resolveAppRedirect({
     if (matchedLocation.startsWith('/particulier')) {
       return target;
     }
-    // Routes métier (prestations, wallet, historique) : ne pas forcer le shell.
     if (AppRoutes.isAuthPath(matchedLocation) ||
         matchedLocation == AppRoutes.loading) {
       return target;
+    }
+    if (userProvider.hasRefusedPrestataireDocument &&
+        matchedLocation != AppRoutes.prestataireDocumentsRefused &&
+        AppRoutes.isPrestataireRouteRequiringActiveAbonnement(matchedLocation)) {
+      return AppRoutes.prestataireDocumentsRefused;
+    }
+    if (!userProvider.hasAbonnementValide &&
+        AppRoutes.isPrestataireRouteRequiringActiveAbonnement(matchedLocation)) {
+      return AppRoutes.prestataireAbonnement;
     }
     return null;
   }
@@ -87,12 +93,6 @@ String homePathForUser({
   required SettingsProvider settingsProvider,
 }) {
   if (!userProvider.isAuthenticated || userProvider.user == null) {
-    if (settingsProvider.guestOnboardingDone) {
-      if (settingsProvider.locale == null) {
-        return AppRoutes.settings;
-      }
-      return AppRoutes.particulierHome;
-    }
     return AppRoutes.welcome;
   }
   if (settingsProvider.locale == null) {
@@ -112,12 +112,12 @@ String _prestataireShellPath(UserProvider userProvider) {
   final statutVerif =
       userProvider.user!.statutVerification?.toString().toUpperCase() ?? '';
   if (statutVerif == 'NON_VERIFIE' || statutVerif == 'EN_ATTENTE') {
-    if (userProvider.prestataireDocuments.isEmpty) {
+    if (!userProvider.hasAllRequiredPrestataireDocuments) {
       return AppRoutes.prestataireDocuments;
     }
     return AppRoutes.prestataireValidation;
   }
-  if (statutVerif == 'REFUSE') {
+  if (statutVerif == 'REFUSE' || userProvider.hasRefusedPrestataireDocument) {
     return AppRoutes.prestataireDocumentsRefused;
   }
   if (!userProvider.hasAbonnementValide) {

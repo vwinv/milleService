@@ -7,6 +7,7 @@ import 'package:milleservices/controllers/walletController.dart';
 import 'package:milleservices/providers/userProvider.dart';
 import 'package:milleservices/services/sizeConfig.dart';
 import 'package:milleservices/services/utilities.dart';
+import 'package:milleservices/widgets/keyboard_dismiss.dart';
 
 class Wallet extends StatefulWidget {
   const Wallet({super.key});
@@ -244,7 +245,7 @@ class _WalletState extends State<Wallet> {
         ],
       ),
       body: SafeArea(
-        child: SingleChildScrollView(
+        child: KeyboardDismissScrollView(
           child: Column(
             children: [
               Padding(

@@ -37,10 +37,17 @@ class CustomTextField extends StatelessWidget {
     this.maxLines,
   });
 
+  InputBorder _outlineBorder(Color color) {
+    return OutlineInputBorder(
+      borderRadius: BorderRadius.all(Radius.circular(radius)),
+      borderSide: BorderSide(color: color),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
-    // Garantit un minimum tactile lisible sur petits écrans.
     final effectiveHeight = height < 48 ? 48.0 : height;
+    final horizontalPadding = SizeConfig.blockSizeHorizontal * 5;
 
     return Padding(
       padding: EdgeInsets.symmetric(
@@ -52,36 +59,40 @@ class CustomTextField extends StatelessWidget {
         spacing: SizeConfig.blockSizeVertical * 1,
         children: [
           Text(label, style: labelStyle),
-          Container(
-            height: maxLines != null && maxLines! > 1 ? null : effectiveHeight,
-            constraints: BoxConstraints(
-              minHeight: maxLines != null && maxLines! > 1 ? 0 : effectiveHeight,
-            ),
+          SizedBox(
             width: width,
-            padding: EdgeInsets.only(left: SizeConfig.blockSizeHorizontal * 5),
-            decoration: BoxDecoration(
-              border: Border.all(color: borderColor),
-              color: fillColor,
-              borderRadius: BorderRadius.all(Radius.circular(radius)),
-            ),
-            child: Row(
-              children: [
-                Expanded(
-                  child: TextFormField(
-                    controller: controller,
-                    style: textfieldStyle,
-                    decoration: InputDecoration(
-                      hintText: placeholder,
-                      border: InputBorder.none,
-                      hintStyle: placeholderStyle,
-                    ),
-                    validator: validator,
-                    obscureText: obscur,
-                    maxLines: obscur ? 1 : maxLines,
-                  ),
+            child: TextFormField(
+              controller: controller,
+              style: textfieldStyle,
+              validator: validator,
+              obscureText: obscur,
+              maxLines: obscur ? 1 : maxLines,
+              decoration: InputDecoration(
+                hintText: placeholder,
+                hintStyle: placeholderStyle,
+                filled: true,
+                fillColor: fillColor,
+                isDense: false,
+                contentPadding: EdgeInsets.symmetric(
+                  horizontal: horizontalPadding,
+                  vertical: maxLines != null && maxLines! > 1 ? 14 : 12,
                 ),
-                prefixIcon == null ? SizedBox.shrink() : prefixIcon!,
-              ],
+                constraints: BoxConstraints(
+                  minHeight: effectiveHeight,
+                ),
+                border: _outlineBorder(borderColor),
+                enabledBorder: _outlineBorder(borderColor),
+                focusedBorder: _outlineBorder(borderColor),
+                errorBorder: _outlineBorder(Colors.red.shade700),
+                focusedErrorBorder: _outlineBorder(Colors.red.shade700),
+                errorMaxLines: 3,
+                errorStyle: TextStyle(
+                  color: Colors.red.shade700,
+                  fontSize: SizeConfig.blockSizeHorizontal * 2.8,
+                  height: 1.25,
+                ),
+                suffixIcon: prefixIcon,
+              ),
             ),
           ),
         ],

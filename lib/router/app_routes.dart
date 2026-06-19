@@ -56,7 +56,6 @@ abstract final class AppRoutes {
     loginParticulier,
     signup,
     forgotPassword,
-    profil,
   };
 
   static bool isAuthPath(String location) =>
@@ -74,5 +73,15 @@ abstract final class AppRoutes {
       return true;
     }
     return isParticulierPath(location);
+  }
+
+  /// Routes prestataire nécessitant un abonnement actif (hors onboarding / réabonnement).
+  static bool isPrestataireRouteRequiringActiveAbonnement(String location) {
+    if (location == prestataireHome) return true;
+    if (location == prestataireWallet) return true;
+    if (location == historique) return true;
+    if (location == prestataireConfirmPrestation) return true;
+    if (location.startsWith('/prestataire/prestations/')) return true;
+    return false;
   }
 }

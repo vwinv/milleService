@@ -96,6 +96,57 @@ class _HomeAbonnementState extends State<HomeAbonnement> {
     return n.toString();
   }
 
+  int _offrePrixFcfa(Offre offre) {
+    final prix = offre.prix;
+    if (prix is num) return prix.round();
+    return int.tryParse(prix?.toString() ?? '') ?? 0;
+  }
+
+  Future<void> _completeAbonnementSuccess({
+    required Offre selected,
+    required UserProvider userProvider,
+  }) async {
+    if (!userProvider.hasAbonnementValide) {
+      await userProvider.refreshAbonnementCourant();
+    }
+    if (!mounted) return;
+    if (!userProvider.hasAbonnementValide) return;
+    final aboApres = userProvider.abonnement;
+    if (aboApres?.offreId?.toString() != selected.id.toString()) return;
+    Utilities().showMesage(
+      context,
+      'success',
+      'abonnement_success'.tr(
+        namedArgs: {'libelle': selected.libelle ?? ''},
+      ),
+    );
+    AppNavigation.goHome(context);
+  }
+
+  Future<void> _souscrireOffreGratuite({
+    required Offre selected,
+    required UserProvider userProvider,
+  }) async {
+    setState(() => _localLoading = true);
+    final res = await userProvider.souscrireAbonnement(selected.id.toString());
+    if (!mounted) return;
+    setState(() => _localLoading = false);
+    if (res.success != true) {
+      Utilities().showMesage(
+        context,
+        'error',
+        res.message?.toString().isNotEmpty == true
+            ? res.message.toString()
+            : 'abonnement_failed'.tr(),
+      );
+      return;
+    }
+    await _completeAbonnementSuccess(
+      selected: selected,
+      userProvider: userProvider,
+    );
+  }
+
   Future<void> _waitForNextFrame() {
     final completer = Completer<void>();
     WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -115,6 +166,15 @@ class _HomeAbonnementState extends State<HomeAbonnement> {
     }
     await _waitForNextFrame();
     if (!mounted) return;
+
+    if (_offrePrixFcfa(selected) <= 0) {
+      await _souscrireOffreGratuite(
+        selected: selected,
+        userProvider: userProvider,
+      );
+      return;
+    }
+
     setState(() => _localLoading = true);
     final res = await userProvider.initPaydunyaAbonnement(selected.id.toString());
     if (!mounted) return;
@@ -214,19 +274,10 @@ class _HomeAbonnementState extends State<HomeAbonnement> {
       ),
     );
     if (!mounted || paid != true) return;
-    await userProvider.refreshAbonnementCourant();
-    if (!mounted) return;
-    final aboApres = userProvider.abonnement;
-    if (!userProvider.hasAbonnementValide) return;
-    if (aboApres?.offreId?.toString() != selected.id.toString()) return;
-    Utilities().showMesage(
-      context,
-      'success',
-      'abonnement_success'.tr(
-        namedArgs: {'libelle': selected.libelle ?? ''},
-      ),
+    await _completeAbonnementSuccess(
+      selected: selected,
+      userProvider: userProvider,
     );
-    AppNavigation.goHome(context);
   }
 
   @override
@@ -249,7 +300,7 @@ class _HomeAbonnementState extends State<HomeAbonnement> {
             icon: const Icon(Icons.logout, color: Colors.red),
             tooltip: 'Déconnexion',
             onPressed: () async {
-              await context.read<UserProvider>().logout();
+              await AppNavigation.signOut(context);
               if (!context.mounted) return;
               AppNavigation.goWelcome(context);
             },
@@ -374,31 +425,33 @@ class _HomeAbonnementState extends State<HomeAbonnement> {
                                       ),
                                     ),
                                   ),
-                                  Column(
-                                    crossAxisAlignment: CrossAxisAlignment.end,
-                                    children: [
-                                      Text(
-                                        '${_formatPrix(offre.prix)} FCFA',
-                                        style: TextStyle(
-                                          fontSize:
-                                              SizeConfig.blockSizeHorizontal *
-                                              3.8,
-                                          fontWeight: FontWeight.bold,
-                                          color: utils.colorBlueDark,
+                                  if (_offrePrixFcfa(offre) > 0)
+                                    Column(
+                                      crossAxisAlignment:
+                                          CrossAxisAlignment.end,
+                                      children: [
+                                        Text(
+                                          '${_formatPrix(offre.prix)} FCFA',
+                                          style: TextStyle(
+                                            fontSize: SizeConfig
+                                                    .blockSizeHorizontal *
+                                                3.8,
+                                            fontWeight: FontWeight.bold,
+                                            color: utils.colorBlueDark,
+                                          ),
                                         ),
-                                      ),
-                                      const SizedBox(height: 2),
-                                      Text(
-                                        _subtitleForOffre(offre),
-                                        style: TextStyle(
-                                          fontSize:
-                                              SizeConfig.blockSizeHorizontal *
-                                              2.8,
-                                          color: utils.colorGreyDark,
+                                        const SizedBox(height: 2),
+                                        Text(
+                                          _subtitleForOffre(offre),
+                                          style: TextStyle(
+                                            fontSize: SizeConfig
+                                                    .blockSizeHorizontal *
+                                                2.8,
+                                            color: utils.colorGreyDark,
+                                          ),
                                         ),
-                                      ),
-                                    ],
-                                  ),
+                                      ],
+                                    ),
                                 ],
                               ),
                             ),

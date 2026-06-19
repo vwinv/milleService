@@ -17,6 +17,9 @@ class AddressAutocompleteField extends StatefulWidget {
   final Color borderColor;
   final Color fillColor;
   final String? Function(String?)? validator;
+  final double? biasLat;
+  final double? biasLng;
+  final ValueChanged<AddressSelection?>? onSelectionChanged;
 
   const AddressAutocompleteField({
     super.key,
@@ -31,6 +34,9 @@ class AddressAutocompleteField extends StatefulWidget {
     required this.height,
     required this.width,
     this.validator,
+    this.biasLat,
+    this.biasLng,
+    this.onSelectionChanged,
   });
 
   @override
@@ -42,14 +48,22 @@ class _AddressAutocompleteFieldState extends State<AddressAutocompleteField> {
   final GeocodingController _geocoding = GeocodingController();
   List<AutocompleteSuggestion> _predictions = [];
   bool _loading = false;
+  bool _resolvingSelection = false;
   bool _hasSearched = false;
   Timer? _debounce;
   final _focusNode = FocusNode();
+  AddressSelection? _selection;
 
   @override
   void initState() {
     super.initState();
     _focusNode.addListener(_onFocusChange);
+  }
+
+  void _clearSelection() {
+    if (_selection == null) return;
+    _selection = null;
+    widget.onSelectionChanged?.call(null);
   }
 
   void _onFocusChange() {
@@ -66,8 +80,12 @@ class _AddressAutocompleteFieldState extends State<AddressAutocompleteField> {
   }
 
   void _onTextChanged(String value) {
-    _debounce?.cancel();
     final trimmed = value.trim();
+    if (_selection != null && trimmed != _selection!.displayName.trim()) {
+      _clearSelection();
+    }
+
+    _debounce?.cancel();
     if (trimmed.isEmpty) {
       setState(() {
         _predictions = [];
@@ -96,22 +114,57 @@ class _AddressAutocompleteFieldState extends State<AddressAutocompleteField> {
       _hasSearched = false;
     });
 
-    final list = await _geocoding.autocomplete(query);
+    final list = await _geocoding.autocomplete(
+      query,
+      biasLat: widget.biasLat,
+      biasLng: widget.biasLng,
+    );
+    final suggestions = list.isNotEmpty
+        ? list
+        : await _geocoding.geocodeFallbackSuggestions(query);
 
     if (!mounted || !_focusNode.hasFocus) return;
     setState(() {
-      _predictions = list;
+      _predictions = suggestions;
       _loading = false;
       _hasSearched = true;
     });
   }
 
-  void _onSelectSuggestion(AutocompleteSuggestion suggestion) {
-    widget.controller.text = suggestion.displayName;
+  Future<void> _onSelectSuggestion(AutocompleteSuggestion suggestion) async {
+    final displayName = suggestion.displayName.trim();
+    widget.controller.text = displayName;
     setState(() {
       _predictions = [];
       _hasSearched = false;
+      _resolvingSelection = true;
     });
+
+    double? lat = suggestion.lat;
+    double? lng = suggestion.lng;
+    final placeId = suggestion.placeId?.trim();
+
+    if ((lat == null || lng == null) &&
+        placeId != null &&
+        placeId.isNotEmpty) {
+      final coords = await _geocoding.placeDetails(placeId);
+      if (coords != null) {
+        lat = coords.lat;
+        lng = coords.lng;
+      }
+    }
+
+    if (!mounted) return;
+
+    _selection = AddressSelection(
+      displayName: displayName,
+      placeId: placeId,
+      lat: lat,
+      lng: lng,
+    );
+    widget.onSelectionChanged?.call(_selection);
+
+    setState(() => _resolvingSelection = false);
     _focusNode.unfocus();
   }
 
@@ -153,6 +206,7 @@ class _AddressAutocompleteFieldState extends State<AddressAutocompleteField> {
           final p = _predictions[index];
           return ListTile(
             dense: true,
+            leading: const Icon(Icons.place_outlined, size: 20),
             title: Text(
               p.displayName,
               style: TextStyle(
@@ -209,34 +263,89 @@ class _AddressAutocompleteFieldState extends State<AddressAutocompleteField> {
         children: [
           if (widget.label.isNotEmpty)
             Text(widget.label, style: widget.labelStyle),
-          Container(
-            height: effectiveHeight,
+          SizedBox(
             width: widget.width,
-            padding: EdgeInsets.only(
-              left: widget.label.isNotEmpty
-                  ? SizeConfig.blockSizeHorizontal * 5
-                  : 0,
-            ),
-            decoration: BoxDecoration(
-              border: Border.all(color: widget.borderColor),
-              color: widget.fillColor,
-              borderRadius: BorderRadius.vertical(
-                top: Radius.circular(borderRadius),
-                bottom: showPanel ? Radius.zero : Radius.circular(borderRadius),
-              ),
-            ),
             child: TextFormField(
               controller: widget.controller,
               focusNode: _focusNode,
               style: widget.textfieldStyle,
-              decoration: InputDecoration(
-                hintText: widget.placeholder,
-                border: InputBorder.none,
-                hintStyle: widget.placeholderStyle,
-                contentPadding: const EdgeInsets.symmetric(vertical: 12),
-              ),
               validator: widget.validator,
               onChanged: _onTextChanged,
+              decoration: InputDecoration(
+                hintText: widget.placeholder,
+                hintStyle: widget.placeholderStyle,
+                filled: true,
+                fillColor: widget.fillColor,
+                isDense: false,
+                contentPadding: EdgeInsets.symmetric(
+                  horizontal: widget.label.isNotEmpty
+                      ? SizeConfig.blockSizeHorizontal * 5
+                      : SizeConfig.blockSizeHorizontal * 3,
+                  vertical: 12,
+                ),
+                constraints: BoxConstraints(minHeight: effectiveHeight),
+                border: OutlineInputBorder(
+                  borderRadius: BorderRadius.vertical(
+                    top: Radius.circular(borderRadius),
+                    bottom: showPanel
+                        ? Radius.zero
+                        : Radius.circular(borderRadius),
+                  ),
+                  borderSide: BorderSide(color: widget.borderColor),
+                ),
+                enabledBorder: OutlineInputBorder(
+                  borderRadius: BorderRadius.vertical(
+                    top: Radius.circular(borderRadius),
+                    bottom: showPanel
+                        ? Radius.zero
+                        : Radius.circular(borderRadius),
+                  ),
+                  borderSide: BorderSide(color: widget.borderColor),
+                ),
+                focusedBorder: OutlineInputBorder(
+                  borderRadius: BorderRadius.vertical(
+                    top: Radius.circular(borderRadius),
+                    bottom: showPanel
+                        ? Radius.zero
+                        : Radius.circular(borderRadius),
+                  ),
+                  borderSide: BorderSide(color: widget.borderColor),
+                ),
+                errorBorder: OutlineInputBorder(
+                  borderRadius: BorderRadius.vertical(
+                    top: Radius.circular(borderRadius),
+                    bottom: showPanel
+                        ? Radius.zero
+                        : Radius.circular(borderRadius),
+                  ),
+                  borderSide: BorderSide(color: Colors.red.shade700),
+                ),
+                focusedErrorBorder: OutlineInputBorder(
+                  borderRadius: BorderRadius.vertical(
+                    top: Radius.circular(borderRadius),
+                    bottom: showPanel
+                        ? Radius.zero
+                        : Radius.circular(borderRadius),
+                  ),
+                  borderSide: BorderSide(color: Colors.red.shade700),
+                ),
+                errorMaxLines: 3,
+                errorStyle: TextStyle(
+                  color: Colors.red.shade700,
+                  fontSize: SizeConfig.blockSizeHorizontal * 2.8,
+                  height: 1.25,
+                ),
+                suffixIcon: _resolvingSelection
+                    ? const Padding(
+                        padding: EdgeInsets.all(12),
+                        child: SizedBox(
+                          width: 20,
+                          height: 20,
+                          child: CircularProgressIndicator(strokeWidth: 2),
+                        ),
+                      )
+                    : null,
+              ),
             ),
           ),
           if (showPanel)

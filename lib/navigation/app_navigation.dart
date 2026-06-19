@@ -48,6 +48,19 @@ abstract final class AppNavigation {
 
   static void goSignUp(BuildContext context) => context.go(AppRoutes.signup);
 
+  /// Déconnexion + réinitialisation du parcours invité mémorisé.
+  static Future<void> signOut(BuildContext context) async {
+    await context.read<UserProvider>().logout();
+    await context.read<SettingsProvider>().clearGuestOnboardingDone();
+  }
+
+  /// Mémorise le parcours particulier une fois connecté.
+  static Future<void> markParticulierOnboardingDone(
+    BuildContext context,
+  ) async {
+    await context.read<SettingsProvider>().markGuestOnboardingDone();
+  }
+
   static void goPrestataireSignUp(BuildContext context) =>
       context.go('${AppRoutes.signup}?role=prestataire');
 

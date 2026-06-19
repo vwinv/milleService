@@ -5,17 +5,18 @@ import 'package:milleservices/controllers/authController.dart';
 import 'package:milleservices/controllers/geocodingController.dart';
 import 'package:milleservices/providers/prestatairesProvider.dart';
 import 'package:milleservices/models/user.dart';
-import 'package:milleservices/providers/settings_provider.dart';
 import 'package:milleservices/providers/userProvider.dart';
 import 'package:milleservices/services/document_picker_helper.dart';
 import 'package:milleservices/services/pick_file_name.dart';
 import 'package:milleservices/navigation/app_navigation.dart';
+import 'package:milleservices/services/form_validation.dart';
 import 'package:milleservices/services/sizeConfig.dart';
 import 'package:milleservices/services/utilities.dart';
 import 'package:milleservices/widgets/address_autocomplete_field.dart';
 import 'package:milleservices/widgets/customButton.dart';
 import 'package:milleservices/widgets/customTextField.dart';
 import 'package:milleservices/widgets/auth_keyboard_aware_layout.dart';
+import 'package:milleservices/widgets/keyboard_dismiss.dart';
 import 'package:milleservices/widgets/dashed_upload_zone.dart';
 import 'package:provider/provider.dart';
 
@@ -64,6 +65,8 @@ class _SignUpState extends State<SignUp> with TickerProviderStateMixin {
 
   // Services sélectionnés pour les prestataires
   final Set<String> _selectedServiceIdsPrestataire = {};
+  bool _servicesAccordionOpen = false;
+  AddressSelection? _addressSelection;
 
   // Documents prestataire (nom affiché + fichier pour upload)
   String? cniRectoFileName;
@@ -76,6 +79,8 @@ class _SignUpState extends State<SignUp> with TickerProviderStateMixin {
   PlatformFile? diplomeFile;
 
   bool _signUpInProgress = false;
+  final ScrollController _signupScrollController = ScrollController();
+  final GlobalKey _servicesSectionKey = GlobalKey();
 
   @override
   void initState() {
@@ -93,7 +98,7 @@ class _SignUpState extends State<SignUp> with TickerProviderStateMixin {
 
   @override
   void dispose() {
-    // tabController.dispose();
+    _signupScrollController.dispose();
     super.dispose();
   }
 
@@ -104,6 +109,135 @@ class _SignUpState extends State<SignUp> with TickerProviderStateMixin {
     if (file != null && mounted) {
       onPicked(file.name, file);
     }
+  }
+
+  String _servicesAccordionTitle() {
+    final base = 'signup_services_title'.tr();
+    final count = _selectedServiceIdsPrestataire.length;
+    if (count == 0) return base;
+    return '$base ($count)';
+  }
+
+  Widget _buildAccordionItem({
+    required String title,
+    required IconData icon,
+    required bool isOpen,
+    required VoidCallback onToggle,
+    required List<Widget> children,
+  }) {
+    return Container(
+      decoration: BoxDecoration(
+        color: Colors.white,
+        border: Border.all(color: Utilities().colorGreyDark),
+        borderRadius: BorderRadius.circular(SizeConfig.blockSizeHorizontal * 5),
+      ),
+      child: Column(
+        children: [
+          InkWell(
+            borderRadius: BorderRadius.circular(
+              SizeConfig.blockSizeHorizontal * 5,
+            ),
+            onTap: onToggle,
+            child: Padding(
+              padding: EdgeInsets.symmetric(
+                horizontal: SizeConfig.blockSizeHorizontal * 4,
+                vertical: SizeConfig.blockSizeVertical * 1.6,
+              ),
+              child: Row(
+                children: [
+                  Icon(
+                    icon,
+                    color: Colors.black,
+                    size: SizeConfig.blockSizeHorizontal * 5,
+                  ),
+                  SizedBox(width: SizeConfig.blockSizeHorizontal * 3),
+                  Expanded(
+                    child: Text(
+                      title,
+                      style: TextStyle(
+                        color: Colors.black,
+                        fontSize: SizeConfig.fontSize(
+                          SizeConfig.blockSizeHorizontal * 3.4,
+                        ),
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                  ),
+                  Icon(
+                    isOpen
+                        ? Icons.keyboard_arrow_up
+                        : Icons.keyboard_arrow_down,
+                    color: Colors.black,
+                    size: SizeConfig.blockSizeHorizontal * 4,
+                  ),
+                ],
+              ),
+            ),
+          ),
+          if (isOpen) const Divider(height: 1),
+          if (isOpen)
+            Column(
+              children: [
+                ...children,
+                SizedBox(height: SizeConfig.blockSizeVertical * 1.2),
+              ],
+            ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildServicesAccordion(PrestatairesProvider prestatairesProvider) {
+    return _buildAccordionItem(
+      title: _servicesAccordionTitle(),
+      icon: Icons.handyman_outlined,
+      isOpen: _servicesAccordionOpen,
+      onToggle: () {
+        setState(() => _servicesAccordionOpen = !_servicesAccordionOpen);
+      },
+      children: [
+        if (prestatairesProvider.servicesLoading)
+          Padding(
+            padding: EdgeInsets.symmetric(
+              vertical: SizeConfig.blockSizeVertical * 2,
+            ),
+            child: const Center(child: CircularProgressIndicator()),
+          )
+        else
+          ...prestatairesProvider.services.map((srv) {
+            final id = srv.id;
+            final libelle = srv.libelle;
+            if (id.isEmpty || libelle.isEmpty) {
+              return const SizedBox.shrink();
+            }
+            final selected = _selectedServiceIdsPrestataire.contains(id);
+            return CheckboxListTile(
+              value: selected,
+              onChanged: (value) {
+                setState(() {
+                  if (value == true) {
+                    _selectedServiceIdsPrestataire.add(id);
+                  } else {
+                    _selectedServiceIdsPrestataire.remove(id);
+                  }
+                });
+              },
+              dense: true,
+              contentPadding: EdgeInsets.symmetric(
+                horizontal: SizeConfig.blockSizeHorizontal * 2,
+              ),
+              activeColor: Utilities().colorBlueDark,
+              title: Text(
+                libelle,
+                style: TextStyle(
+                  fontSize: SizeConfig.blockSizeHorizontal * 3.2,
+                  color: Colors.black,
+                ),
+              ),
+            );
+          }),
+      ],
+    );
   }
 
   String get _type => widget.initialRole == SignUpRole.particulier
@@ -130,7 +264,6 @@ class _SignUpState extends State<SignUp> with TickerProviderStateMixin {
 
   Widget _buildForm(String type) {
     final userProvider = Provider.of<UserProvider>(context);
-    final settings = Provider.of<SettingsProvider>(context);
     final prestatairesProvider = Provider.of<PrestatairesProvider>(context);
 
     Future<void> handleSignUp() async {
@@ -138,11 +271,16 @@ class _SignUpState extends State<SignUp> with TickerProviderStateMixin {
       _signUpInProgress = true;
       userProvider.setLoading(true);
       try {
-        print("handle sign  ");
-        // final formKey = type == "particulier"
-        //     ? formParticulierKey
-        //     : formPrestataireKey;
-        // TODO: réactiver la validation des formulaires si nécessaire.
+        final formKey = type == "particulier"
+            ? formParticulierKey
+            : formPrestataireKey;
+        final formState = formKey.currentState;
+        if (formState == null || !formState.validate()) {
+          if (formState != null && mounted) {
+            await scrollToFirstFormError(formState.context);
+          }
+          return;
+        }
 
         final address = type == "particulier"
             ? addressParticulierController.text.trim()
@@ -150,7 +288,10 @@ class _SignUpState extends State<SignUp> with TickerProviderStateMixin {
         double? lat;
         double? lng;
         if (address.length >= 3) {
-          final coords = await GeocodingController().geocode(address);
+          final coords = await GeocodingController().resolveCoordinates(
+            address: address,
+            selection: _addressSelection,
+          );
           if (coords != null) {
             lat = coords.lat;
             lng = coords.lng;
@@ -194,6 +335,17 @@ class _SignUpState extends State<SignUp> with TickerProviderStateMixin {
         if (type == "prestataire") {
           if (_selectedServiceIdsPrestataire.isEmpty) {
             if (mounted) {
+              setState(() => _servicesAccordionOpen = true);
+              await Future<void>.delayed(Duration.zero);
+              final servicesContext = _servicesSectionKey.currentContext;
+              if (servicesContext != null && servicesContext.mounted) {
+                await Scrollable.ensureVisible(
+                  servicesContext,
+                  duration: const Duration(milliseconds: 350),
+                  curve: Curves.easeInOut,
+                  alignment: 0.12,
+                );
+              }
               Utilities().showMesage(
                 context,
                 'error',
@@ -249,10 +401,12 @@ class _SignUpState extends State<SignUp> with TickerProviderStateMixin {
         print("res: ${res.toString()}");
         if (res.success == true) {
           if (mounted) {
+            if (type == 'particulier') {
+              await AppNavigation.markParticulierOnboardingDone(context);
+            }
+            if (!mounted) return;
             Utilities().showMesage(context, 'success', "signup_success".tr());
-            // Navigation après inscription selon le type d'utilisateur
-
-          AppNavigation.continueAfterAuth(context);
+            AppNavigation.continueAfterAuth(context);
           }
         } else {
           if (mounted) {
@@ -274,7 +428,8 @@ class _SignUpState extends State<SignUp> with TickerProviderStateMixin {
       }
     }
 
-    return SingleChildScrollView(
+    return KeyboardDismissScrollView(
+      controller: _signupScrollController,
       padding: AuthKeyboardAwareLayout.formScrollPadding(context),
       child: Form(
         key: type == "particulier" ? formParticulierKey : formPrestataireKey,
@@ -284,6 +439,37 @@ class _SignUpState extends State<SignUp> with TickerProviderStateMixin {
               CustomTextField(
                 radius: SizeConfig.blockSizeHorizontal * 10,
                 controller: firstnameParticulierController,
+                borderColor: Utilities().colorGreyDark,
+                fillColor: Colors.white,
+                label: "signup_firstname_label".tr(),
+                labelStyle: TextStyle(
+                  color: Colors.black,
+                  fontSize: SizeConfig.blockSizeHorizontal * 3.5,
+                  fontWeight: FontWeight.bold,
+                ),
+                placeholder: "signup_firstname_placeholder".tr(),
+                textfieldStyle: TextStyle(color: Utilities().colorGreyDark),
+                placeholderStyle: TextStyle(
+                  color: Utilities().colorGreyDark,
+                  fontSize: SizeConfig.blockSizeHorizontal * 3,
+                  fontWeight: FontWeight.normal,
+                ),
+                obscur: false,
+                height: SizeConfig.blockSizeVertical * 5,
+                width: SizeConfig.blockSizeHorizontal * 80,
+                validator: (value) {
+                  if ((value ?? '').trim().isEmpty) {
+                    return "signup_firstname_required".tr();
+                  }
+                  return null;
+                },
+                prefixIcon: null,
+              ),
+
+            if (type == "prestataire")
+              CustomTextField(
+                radius: SizeConfig.blockSizeHorizontal * 10,
+                controller: fistnamePrestataireController,
                 borderColor: Utilities().colorGreyDark,
                 fillColor: Colors.white,
                 label: "signup_firstname_label".tr(),
@@ -404,7 +590,7 @@ class _SignUpState extends State<SignUp> with TickerProviderStateMixin {
                 if ((value ?? '').trim().isEmpty) {
                   return "signup_phone_required".tr();
                 }
-                if (!RegExp(r'^[0-9]{10}$').hasMatch(value ?? '')) {
+                if (!RegExp(r'^[0-9]{9}$').hasMatch(value ?? '')) {
                   return "signup_phone_invalid".tr();
                 }
                 return null;
@@ -438,8 +624,12 @@ class _SignUpState extends State<SignUp> with TickerProviderStateMixin {
               height: SizeConfig.blockSizeVertical * 5,
               width: SizeConfig.blockSizeHorizontal * 80,
               validator: (value) {
-                if ((value ?? '').trim().isEmpty) {
+                final v = (value ?? '').trim();
+                if (v.isEmpty) {
                   return "signup_password_required".tr();
+                }
+                if (v.length < 8) {
+                  return "signup_password_min_length".tr();
                 }
                 return null;
               },
@@ -564,6 +754,9 @@ class _SignUpState extends State<SignUp> with TickerProviderStateMixin {
                 }
                 return null;
               },
+              onSelectionChanged: (selection) {
+                _addressSelection = selection;
+              },
             ),
             if (type == "prestataire")
               CustomTextField(
@@ -594,67 +787,12 @@ class _SignUpState extends State<SignUp> with TickerProviderStateMixin {
             if (type == "prestataire") ...[
               SizedBox(height: SizeConfig.blockSizeVertical * 1.5),
               Padding(
-                padding: EdgeInsets.only(
-                  left: SizeConfig.blockSizeHorizontal * 10,
+                key: _servicesSectionKey,
+                padding: EdgeInsets.symmetric(
+                  horizontal: SizeConfig.blockSizeHorizontal * 10,
                 ),
-                child: Align(
-                  alignment: Alignment.centerLeft,
-                  child: Text(
-                    "signup_services_title".tr(),
-                    style: TextStyle(
-                      color: Colors.black,
-                      fontSize: SizeConfig.blockSizeHorizontal * 3.5,
-                      fontWeight: FontWeight.bold,
-                    ),
-                  ),
-                ),
+                child: _buildServicesAccordion(prestatairesProvider),
               ),
-              SizedBox(height: SizeConfig.blockSizeVertical * 1),
-              if (prestatairesProvider.servicesLoading)
-                const Center(child: CircularProgressIndicator())
-              else
-                Padding(
-                  padding: EdgeInsets.only(
-                    left: SizeConfig.blockSizeHorizontal * 10,
-                  ),
-                  child: Column(
-                    children: prestatairesProvider.services.map((srv) {
-                      print("srv: ${srv.toString()}");
-                      final id = srv.id;
-                      final libelle = srv.libelle;
-                      if (id.isEmpty || libelle.isEmpty) {
-                        return const SizedBox();
-                      }
-                      final selected = _selectedServiceIdsPrestataire.contains(
-                        id,
-                      );
-                      return CheckboxListTile(
-                        value: selected,
-                        onChanged: (value) {
-                          setState(() {
-                            if (value == true) {
-                              _selectedServiceIdsPrestataire.add(id);
-                            } else {
-                              _selectedServiceIdsPrestataire.remove(id);
-                            }
-                          });
-                        },
-                        dense: true,
-                        contentPadding: EdgeInsets.symmetric(
-                          horizontal: SizeConfig.blockSizeHorizontal * 5,
-                        ),
-                        activeColor: Utilities().colorBlueDark,
-                        title: Text(
-                          libelle,
-                          style: TextStyle(
-                            fontSize: SizeConfig.blockSizeHorizontal * 3.2,
-                            color: Colors.black,
-                          ),
-                        ),
-                      );
-                    }).toList(),
-                  ),
-                ),
             ],
             if (type == "prestataire") ...[
               Padding(

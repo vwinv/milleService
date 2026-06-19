@@ -16,6 +16,18 @@ import 'package:milleservices/widgets/prestataire_catalogue_bottom_sheet.dart';
 import 'package:milleservices/widgets/prestataire_catalogue_photo_viewer.dart';
 import 'package:provider/provider.dart';
 
+String? _resolveConfirmAddress(
+  BuildContext context,
+  UserProvider userProvider,
+) {
+  final fromSearch =
+      context.read<PrestatairesProvider>().lastSearchAddress?.trim();
+  if (fromSearch != null && fromSearch.isNotEmpty) return fromSearch;
+  final profile = userProvider.user?.adresse?.toString().trim();
+  if (profile != null && profile.isNotEmpty) return profile;
+  return null;
+}
+
 class DetailsPrestataire extends StatefulWidget {
   final Prestataire prestataire;
   const DetailsPrestataire({super.key, required this.prestataire});
@@ -680,7 +692,7 @@ class _DetailsPrestataireState extends State<DetailsPrestataire> {
       prestataire: widget.prestataire,
       prestataireServiceId: prestataireServiceId,
       serviceLibelle: firstService.libelle,
-      adresseParticulier: userProvider.user?.adresse?.toString(),
+      adresseParticulier: _resolveConfirmAddress(context, userProvider),
     );
     final token = userProvider.token;
     if (token == null || token.isEmpty) {

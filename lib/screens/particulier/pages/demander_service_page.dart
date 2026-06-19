@@ -1,15 +1,19 @@
 import 'package:easy_localization/easy_localization.dart';
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
+import 'package:milleservices/controllers/geocodingController.dart';
 import 'package:milleservices/models/service_category.dart';
 import 'package:milleservices/providers/home_content_provider.dart';
 import 'package:milleservices/providers/prestatairesProvider.dart';
 import 'package:milleservices/providers/userProvider.dart';
 import 'package:milleservices/navigation/app_navigation.dart';
+import 'package:milleservices/services/address_line_helper.dart';
+import 'package:milleservices/services/device_location_service.dart';
 import 'package:milleservices/services/sizeConfig.dart';
 import 'package:milleservices/services/utilities.dart';
 import 'package:milleservices/widgets/address_autocomplete_field.dart';
 import 'package:milleservices/widgets/customButton.dart';
+import 'package:milleservices/widgets/keyboard_dismiss.dart';
 import 'package:provider/provider.dart';
 
 class DemanderServicePage extends StatefulWidget {
@@ -22,6 +26,9 @@ class DemanderServicePage extends StatefulWidget {
 class _DemanderServicePageState extends State<DemanderServicePage> {
   final TextEditingController addressPrestationController =
       TextEditingController();
+
+  AddressSelection? _addressSelection;
+  bool _prefillingAddress = true;
 
   int? _selectedCategorie;
   int? _selectedDisponibilite;
@@ -44,12 +51,50 @@ class _DemanderServicePageState extends State<DemanderServicePage> {
   void initState() {
     super.initState();
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      final user = context.read<UserProvider>().user;
-      if (user != null && user.adresse != null) {
-        addressPrestationController.text = user.adresse.toString();
-      }
+      _prefillAddressField();
       context.read<PrestatairesProvider>().loadServicesIfNeeded();
     });
+  }
+
+  Future<void> _prefillAddressField() async {
+    final user = context.read<UserProvider>().user;
+
+    if (Utilities.useRealtimeLocation) {
+      final latLng = await DeviceLocationService.getCurrentLatLngOrNull();
+      if (latLng != null) {
+        final line = await AddressLineHelper.reverseGeocodeFromLatLng(latLng);
+        if (!mounted) return;
+        if (line != null && line.isNotEmpty) {
+          addressPrestationController.text = line;
+          _addressSelection = AddressSelection(
+            displayName: line,
+            lat: latLng.latitude,
+            lng: latLng.longitude,
+          );
+        } else {
+          _addressSelection = AddressSelection(
+            displayName: '',
+            lat: latLng.latitude,
+            lng: latLng.longitude,
+          );
+        }
+        setState(() => _prefillingAddress = false);
+        return;
+      }
+    }
+
+    final saved = user?.adresse?.toString().trim() ?? '';
+    if (saved.isNotEmpty && mounted) {
+      addressPrestationController.text = saved;
+      if (user?.latitude is num && user?.longitude is num) {
+        _addressSelection = AddressSelection(
+          displayName: saved,
+          lat: (user!.latitude as num).toDouble(),
+          lng: (user.longitude as num).toDouble(),
+        );
+      }
+    }
+    if (mounted) setState(() => _prefillingAddress = false);
   }
 
   @override
@@ -62,7 +107,17 @@ class _DemanderServicePageState extends State<DemanderServicePage> {
   Widget build(BuildContext context) {
     return Consumer<HomeContentProvider>(
       builder: (context, homeContent, _) {
-        return SingleChildScrollView(
+        final user = context.watch<UserProvider>().user;
+        final biasLat = _addressSelection?.lat ??
+            (user?.latitude is num
+                ? (user!.latitude as num).toDouble()
+                : null);
+        final biasLng = _addressSelection?.lng ??
+            (user?.longitude is num
+                ? (user!.longitude as num).toDouble()
+                : null);
+
+        return KeyboardDismissScrollView(
           child: Padding(
             padding: EdgeInsets.symmetric(
               horizontal: SizeConfig.blockSizeHorizontal * 5,
@@ -141,6 +196,11 @@ class _DemanderServicePageState extends State<DemanderServicePage> {
                           ),
                           height: SizeConfig.blockSizeVertical * 4,
                           width: SizeConfig.blockSizeHorizontal * 68,
+                          biasLat: biasLat,
+                          biasLng: biasLng,
+                          onSelectionChanged: (selection) {
+                            _addressSelection = selection;
+                          },
                           validator: (value) {
                             if ((value ?? '').trim().isEmpty) {
                               return "demande_address_required".tr();
@@ -160,10 +220,13 @@ class _DemanderServicePageState extends State<DemanderServicePage> {
                 _buildAvisSection(), */
                 SizedBox(height: SizeConfig.blockSizeVertical * 5),
                 CustomButton(
-                  onTap: () {
-                    _onRechercher();
-                    AppNavigation.pushParticulierSearch(context);
-                  },
+                  onTap: _prefillingAddress
+                      ? null
+                      : () async {
+                          final ok = await _onRechercher();
+                          if (!context.mounted || !ok) return;
+                          AppNavigation.pushParticulierSearch(context);
+                        },
                   title: Center(
                     child: Text(
                       "demande_search_button".tr(),
@@ -189,9 +252,32 @@ class _DemanderServicePageState extends State<DemanderServicePage> {
     );
   }
 
-  /// Action du bouton \"Rechercher\".
-  Future<void> _onRechercher() async {
-    print("onRechercher");
+  /// Action du bouton « Rechercher ». Retourne false si la recherche ne peut pas démarrer.
+  Future<bool> _onRechercher() async {
+    final address = addressPrestationController.text.trim();
+    if (address.isEmpty) {
+      Utilities().showMesage(
+        context,
+        'error',
+        'demande_address_required'.tr(),
+      );
+      return false;
+    }
+
+    final coords = await GeocodingController().resolveCoordinates(
+      address: address,
+      selection: _addressSelection,
+    );
+    if (coords == null) {
+      if (!mounted) return false;
+      Utilities().showMesage(
+        context,
+        'error',
+        'demande_address_geocode_failed'.tr(),
+      );
+      return false;
+    }
+
     final prestatairesProvider = context.read<PrestatairesProvider>();
 
     final services = prestatairesProvider.services;
@@ -204,7 +290,6 @@ class _DemanderServicePageState extends State<DemanderServicePage> {
     }
     String? dateParam;
     if (_selectedDisponibilite == 3 && _plannedDate != null) {
-      // Planifier -> on envoie la date au format YYYY-MM-DD
       final d = _plannedDate!;
       dateParam =
           '${d.year.toString().padLeft(4, '0')}-${d.month.toString().padLeft(2, '0')}-${d.day.toString().padLeft(2, '0')}';
@@ -217,7 +302,22 @@ class _DemanderServicePageState extends State<DemanderServicePage> {
       tarifMax: null,
       date: dateParam,
       userProvider: userProvider,
+      searchLat: coords.lat,
+      searchLng: coords.lng,
+      searchAddress: address,
     );
+
+    if (!mounted) return false;
+    if (prestatairesProvider.searchError != null &&
+        prestatairesProvider.searchError!.isNotEmpty) {
+      Utilities().showMesage(
+        context,
+        'error',
+        prestatairesProvider.searchError!,
+      );
+      return false;
+    }
+    return true;
   }
 
   Widget _buildSectionHeader(

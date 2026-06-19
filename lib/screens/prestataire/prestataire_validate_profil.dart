@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:math' as math;
 
 import 'package:easy_localization/easy_localization.dart';
@@ -6,8 +7,10 @@ import 'package:flutter/material.dart';
 import 'package:flutter_spinkit/flutter_spinkit.dart';
 import 'package:milleservices/controllers/authController.dart';
 import 'package:milleservices/controllers/prestatairesController.dart';
+import 'package:milleservices/providers/settings_provider.dart';
 import 'package:milleservices/providers/userProvider.dart';
 import 'package:milleservices/navigation/app_navigation.dart';
+import 'package:milleservices/router/app_redirect.dart';
 import 'package:milleservices/router/app_routes.dart';
 import 'package:go_router/go_router.dart';
 import 'package:milleservices/services/document_picker_helper.dart';
@@ -20,7 +23,8 @@ import 'package:provider/provider.dart';
 /// Il n'a pas encore accès à son tableau de bord ni aux recherches.
 /// Cet écran interroge le backend pour connaître le statut réel :
 /// - si le profil ou au moins un document est REFUSE -> redirige vers PrestataireDocumentsRefuses
-/// - sinon -> affiche simplement le message "en cours de validation".
+/// - si le profil est VERIFIE -> redirige vers abonnement ou tableau de bord
+/// - sinon -> affiche le message "en cours de validation" (rafraîchissement périodique).
 class PrestataireValidateProfil extends StatefulWidget {
   const PrestataireValidateProfil({super.key});
 
@@ -29,20 +33,54 @@ class PrestataireValidateProfil extends StatefulWidget {
       _PrestataireValidateProfilState();
 }
 
-class _PrestataireValidateProfilState extends State<PrestataireValidateProfil> {
+class _PrestataireValidateProfilState extends State<PrestataireValidateProfil>
+    with WidgetsBindingObserver {
+  static const _pollInterval = Duration(seconds: 20);
+
   bool _checkingStatus = true;
+  bool _statusRequestInFlight = false;
+  Timer? _pollTimer;
 
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     WidgetsBinding.instance.addPostFrameCallback((_) {
+      _checkVerificationStatus(initialLoad: true);
+    });
+    _pollTimer = Timer.periodic(_pollInterval, (_) {
       _checkVerificationStatus();
     });
   }
 
-  Future<void> _checkVerificationStatus() async {
-    final userProvider = Provider.of<UserProvider>(context, listen: false);
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    _pollTimer?.cancel();
+    super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) {
+      _checkVerificationStatus();
+    }
+  }
+
+  Future<void> _logout() async {
+    await AppNavigation.signOut(context);
+    if (!mounted) return;
+    AppNavigation.goWelcome(context);
+  }
+
+  Future<void> _checkVerificationStatus({bool initialLoad = false}) async {
+    if (_statusRequestInFlight) return;
+    _statusRequestInFlight = true;
+
+    final userProvider = context.read<UserProvider>();
+    final settingsProvider = context.read<SettingsProvider>();
     final data = await userProvider.refreshVerificationStatus();
+    _statusRequestInFlight = false;
     if (!mounted) return;
 
     if (data != null) {
@@ -60,11 +98,27 @@ class _PrestataireValidateProfilState extends State<PrestataireValidateProfil> {
         context.go(AppRoutes.prestataireDocumentsRefused);
         return;
       }
+      if ((statut == 'NON_VERIFIE' || statut == 'EN_ATTENTE') &&
+          !userProvider.hasAllRequiredPrestataireDocuments) {
+        context.go(AppRoutes.prestataireDocuments);
+        return;
+      }
+      if (statut == 'VERIFIE') {
+        context.go(
+          homePathForUser(
+            userProvider: userProvider,
+            settingsProvider: settingsProvider,
+          ),
+        );
+        return;
+      }
     }
 
-    setState(() {
-      _checkingStatus = false;
-    });
+    if (initialLoad) {
+      setState(() {
+        _checkingStatus = false;
+      });
+    }
   }
 
   @override
@@ -74,6 +128,19 @@ class _PrestataireValidateProfilState extends State<PrestataireValidateProfil> {
 
     return Scaffold(
       backgroundColor: Colors.white,
+      appBar: AppBar(
+        elevation: 0,
+        backgroundColor: Colors.white,
+        surfaceTintColor: Colors.transparent,
+        automaticallyImplyLeading: false,
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.logout, color: Colors.red),
+            tooltip: 'profil_logout'.tr(),
+            onPressed: _logout,
+          ),
+        ],
+      ),
       body: SafeArea(
         child: Center(
           child: Column(
@@ -205,7 +272,7 @@ class _PrestataireDocumentsRefusesState
             icon: const Icon(Icons.logout, color: Colors.red),
             tooltip: 'Déconnexion',
             onPressed: () async {
-              await context.read<UserProvider>().logout();
+              await AppNavigation.signOut(context);
               if (!context.mounted) return;
               AppNavigation.goWelcome(context);
             },

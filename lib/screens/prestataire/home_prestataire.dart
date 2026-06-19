@@ -10,6 +10,7 @@ import 'package:milleservices/models/prestation.dart';
 import 'package:milleservices/providers/prestationsProvider.dart';
 import 'package:milleservices/providers/userProvider.dart';
 import 'package:milleservices/navigation/app_navigation.dart';
+import 'package:milleservices/services/deactivate_account_flow.dart';
 import 'package:milleservices/services/device_location_service.dart';
 import 'package:milleservices/services/app_locale.dart';
 import 'package:milleservices/services/image_helper.dart';
@@ -905,7 +906,7 @@ child: Text(
                         'success',
                         'presta_become_client_success'.tr(),
                       );
-                      await userProvider.logout();
+                      await AppNavigation.signOut(context);
                       AppNavigation.goWelcome(context);
                     } else {
                       Utilities().showMesage(
@@ -952,8 +953,9 @@ child: Text(
               SizedBox(height: SizeConfig.blockSizeVertical * 2),
               Center(
                 child: TextButton(
-                  onPressed: () {
-                    userProvider.logout();
+                  onPressed: () async {
+                    await AppNavigation.signOut(context);
+                    if (!context.mounted) return;
                     AppNavigation.goWelcome(context);
                   },
                   child: Text(
@@ -967,6 +969,7 @@ child: Text(
                   ),
                 ),
               ),
+              const Center(child: DeleteAccountButton()),
               SizedBox(height: SizeConfig.blockSizeVertical * 2),
             ],
           ),

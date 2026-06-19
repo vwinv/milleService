@@ -22,7 +22,6 @@ class _ChooseProfileState extends State<ChooseProfile> {
   Future<void> _onContinue() async {
     if (_selected == UserProfileChoice.particulier) {
       final settings = context.read<SettingsProvider>();
-      await settings.markGuestOnboardingDone();
       if (!mounted) return;
       if (settings.locale == null) {
         AppNavigation.goSettings(context);
