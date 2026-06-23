@@ -76,9 +76,23 @@ abstract final class AppNavigation {
   /// Après auth : reprend un parcours en attente ou va à l'accueil habituel.
   static void continueAfterAuth(BuildContext context) {
     final resumed = context.read<AuthResumeProvider>().navigateAfterAuth(context);
-    if (!resumed) {
-      goHome(context);
+    if (resumed) return;
+
+    final user = context.read<UserProvider>();
+    final settings = context.read<SettingsProvider>();
+    if (settings.locale == null) {
+      goSettings(context);
+      return;
     }
+    if (user.isPrestataireActif) {
+      context.go(
+        user.hasAbonnementValide
+            ? AppRoutes.prestataireHome
+            : AppRoutes.prestataireAbonnement,
+      );
+      return;
+    }
+    goHome(context);
   }
 
   static void resumeConfirmPrestationAfterAuth(
@@ -188,6 +202,9 @@ abstract final class AppNavigation {
 
   static Future<T?> pushEditInfos<T>(BuildContext context) =>
       context.push<T>(AppRoutes.editInfos);
+
+  static Future<T?> pushCompleteDocuments<T>(BuildContext context) =>
+      context.push<T>(AppRoutes.prestataireCompleteDocuments);
 
   static Future<T?> pushWallet<T>(BuildContext context) =>
       context.push<T>(AppRoutes.prestataireWallet);

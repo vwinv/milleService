@@ -18,6 +18,14 @@ String? resolveAppRedirect({
     return matchedLocation == AppRoutes.loading ? null : AppRoutes.loading;
   }
 
+  // Ne jamais rester bloquée sur le splash une fois l'app prête.
+  if (matchedLocation == AppRoutes.loading) {
+    return _postBootstrapHome(
+      userProvider: userProvider,
+      settingsProvider: settingsProvider,
+    );
+  }
+
   final authenticated =
       userProvider.isAuthenticated && userProvider.user != null;
 
@@ -48,6 +56,24 @@ String? resolveAppRedirect({
   final role = userProvider.user!.role?.toString().toUpperCase() ?? '';
 
   if (role == 'PRESTATAIRE') {
+    if (userProvider.isPrestataireActif) {
+      final shell = _prestataireActifShellPath(userProvider);
+      if (!userProvider.hasAbonnementValide) {
+        if (matchedLocation == AppRoutes.prestataireAbonnement) return null;
+        if (matchedLocation == AppRoutes.settings) return null;
+        return AppRoutes.prestataireAbonnement;
+      }
+      if (_isPrestataireDeepRoute(matchedLocation)) return null;
+      if (matchedLocation == AppRoutes.settings) return null;
+      if (matchedLocation == AppRoutes.prestataireAbonnement) {
+        return AppRoutes.prestataireHome;
+      }
+      if (matchedLocation != shell) {
+        return shell;
+      }
+      return null;
+    }
+
     final target = _prestataireShellPath(userProvider);
     if (_shouldReplacePrestataireLocation(matchedLocation, target)) {
       return target;
@@ -58,15 +84,6 @@ String? resolveAppRedirect({
     if (AppRoutes.isAuthPath(matchedLocation) ||
         matchedLocation == AppRoutes.loading) {
       return target;
-    }
-    if (userProvider.hasRefusedPrestataireDocument &&
-        matchedLocation != AppRoutes.prestataireDocumentsRefused &&
-        AppRoutes.isPrestataireRouteRequiringActiveAbonnement(matchedLocation)) {
-      return AppRoutes.prestataireDocumentsRefused;
-    }
-    if (!userProvider.hasAbonnementValide &&
-        AppRoutes.isPrestataireRouteRequiringActiveAbonnement(matchedLocation)) {
-      return AppRoutes.prestataireAbonnement;
     }
     return null;
   }
@@ -108,10 +125,45 @@ String homePathForUser({
   return AppRoutes.welcome;
 }
 
+/// Prestataire activé en base (`prestataires.actif = true`).
+bool isPrestatairePastDocumentValidation(UserProvider userProvider) {
+  return userProvider.isPrestataireActif;
+}
+
+bool _isPrestataireDeepRoute(String location) {
+  if (location == AppRoutes.prestataireCompleteDocuments) return true;
+  if (location == AppRoutes.prestataireWallet) return true;
+  if (location == AppRoutes.prestataireConfirmPrestation) return true;
+  if (location == AppRoutes.profil) return true;
+  if (location == AppRoutes.notifications) return true;
+  if (location == AppRoutes.editInfos) return true;
+  if (location == AppRoutes.historique) return true;
+  if (location.startsWith('/prestataire/prestations/')) return true;
+  return false;
+}
+
+String _prestataireActifShellPath(UserProvider userProvider) {
+  if (!userProvider.hasAbonnementValide) {
+    return AppRoutes.prestataireAbonnement;
+  }
+  return AppRoutes.prestataireHome;
+}
+
 String _prestataireShellPath(UserProvider userProvider) {
+  if (userProvider.isPrestataireActif) {
+    return _prestataireActifShellPath(userProvider);
+  }
+
+  // actif=false → parcours onboarding documents (inchangé).
   final statutVerif =
       userProvider.user!.statutVerification?.toString().toUpperCase() ?? '';
-  if (statutVerif == 'NON_VERIFIE' || statutVerif == 'EN_ATTENTE') {
+  if (statutVerif == 'NON_VERIFIE') {
+    if (!userProvider.hasAllRequiredPrestataireDocuments) {
+      return AppRoutes.prestataireDocuments;
+    }
+    return AppRoutes.prestataireValidation;
+  }
+  if (statutVerif == 'EN_ATTENTE') {
     if (!userProvider.hasAllRequiredPrestataireDocuments) {
       return AppRoutes.prestataireDocuments;
     }
@@ -137,4 +189,25 @@ bool _shouldReplacePrestataireLocation(String current, String target) {
   };
   if (!onboarding.contains(current)) return false;
   return current != target;
+}
+
+String? _postBootstrapHome({
+  required UserProvider userProvider,
+  required SettingsProvider settingsProvider,
+}) {
+  final authenticated =
+      userProvider.isAuthenticated && userProvider.user != null;
+  if (!authenticated) {
+    if (settingsProvider.locale == null) {
+      return AppRoutes.welcome;
+    }
+    return AppRoutes.welcome;
+  }
+  if (settingsProvider.locale == null) {
+    return AppRoutes.settings;
+  }
+  return homePathForUser(
+    userProvider: userProvider,
+    settingsProvider: settingsProvider,
+  );
 }

@@ -23,6 +23,7 @@ abstract final class AppRoutes {
 
   static const prestataireHome = '/prestataire';
   static const prestataireDocuments = '/prestataire/documents';
+  static const prestataireCompleteDocuments = '/prestataire/complete-documents';
   static const prestataireValidation = '/prestataire/validation';
   static const prestataireDocumentsRefused = '/prestataire/documents-refused';
   static const prestataireAbonnement = '/prestataire/abonnement';

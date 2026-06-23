@@ -58,6 +58,10 @@ class UserProvider extends ChangeNotifier {
         (d) => d.statut.toString().toUpperCase() == 'REFUSE',
       );
 
+  /// Compte prestataire activé côté admin (`prestataires.actif = true`).
+  bool get isPrestataireActif =>
+      isPrestataire && (_user?.prestataireActif == true);
+
   bool get isAuthenticated => _token != null;
 
   bool _isLoading = false;
@@ -117,6 +121,7 @@ class UserProvider extends ChangeNotifier {
       if (res.success == true && res.data is Map<String, dynamic>) {
         final data = res.data as Map<String, dynamic>;
         final statut = data['statutVerification']?.toString();
+        final actifRaw = data['actif'];
         final docsRaw = data['documents'];
 
         if (docsRaw is List) {
@@ -129,7 +134,7 @@ class UserProvider extends ChangeNotifier {
           _prestataireDocuments = [];
         }
 
-        if (_user != null && statut != null) {
+        if (_user != null && (statut != null || actifRaw != null)) {
           final u = _user!;
           _user = User(
             id: u.id,
@@ -142,13 +147,15 @@ class UserProvider extends ChangeNotifier {
             emailVerified: u.emailVerified,
             bio: u.bio,
             zoneIntervention: u.zoneIntervention,
-            statutVerification: statut,
+            statutVerification: statut ?? u.statutVerification,
             createdAt: u.createdAt,
             updatedAt: u.updatedAt,
             role: u.role,
             latitude: u.latitude,
             longitude: u.longitude,
             statutVerificationPrestataire: u.statutVerificationPrestataire,
+            prestataireActif:
+                actifRaw != null ? User.parseActif(actifRaw) : u.prestataireActif,
           );
           final prefs = await SharedPreferences.getInstance();
           await prefs.setString("user", User.encode(_user!));
@@ -350,8 +357,9 @@ class UserProvider extends ChangeNotifier {
         role: u.role,
         latitude: u.latitude,
         longitude: u.longitude,
-        statutVerificationPrestataire: u.statutVerificationPrestataire,
-      );
+            statutVerificationPrestataire: u.statutVerificationPrestataire,
+            prestataireActif: u.prestataireActif,
+          );
       final prefs = await SharedPreferences.getInstance();
       await prefs.setString("user", User.encode(_user!));
       await prefs.remove("avatarUrl");
@@ -623,8 +631,9 @@ class UserProvider extends ChangeNotifier {
         role: u.role,
         latitude: lat,
         longitude: lng,
-        statutVerificationPrestataire: u.statutVerificationPrestataire,
-      );
+            statutVerificationPrestataire: u.statutVerificationPrestataire,
+            prestataireActif: u.prestataireActif,
+          );
       notifyListeners();
       final prefs = await SharedPreferences.getInstance();
       await prefs.setString("user", User.encode(_user!));
@@ -723,8 +732,9 @@ class UserProvider extends ChangeNotifier {
           role: u.role,
           latitude: latitude ?? u.latitude,
           longitude: longitude ?? u.longitude,
-          statutVerificationPrestataire: u.statutVerificationPrestataire,
-        );
+            statutVerificationPrestataire: u.statutVerificationPrestataire,
+            prestataireActif: u.prestataireActif,
+          );
         notifyListeners();
         final prefs = await SharedPreferences.getInstance();
         await prefs.setString("user", User.encode(_user!));
@@ -801,8 +811,9 @@ class UserProvider extends ChangeNotifier {
           role: u.role,
           latitude: latitude ?? u.latitude,
           longitude: longitude ?? u.longitude,
-          statutVerificationPrestataire: u.statutVerificationPrestataire,
-        );
+            statutVerificationPrestataire: u.statutVerificationPrestataire,
+            prestataireActif: u.prestataireActif,
+          );
         notifyListeners();
         final prefs = await SharedPreferences.getInstance();
         await prefs.setString("user", User.encode(_user!));

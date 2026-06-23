@@ -18,6 +18,7 @@ class User {
   final latitude;
   final longitude;
   final statutVerificationPrestataire;
+  final bool prestataireActif;
 
   User({
     required this.id,
@@ -37,6 +38,7 @@ class User {
     this.latitude,
     this.longitude,
     required this.statutVerificationPrestataire,
+    this.prestataireActif = false,
   });
   @override
   String toString() {
@@ -81,6 +83,7 @@ class User {
             ? (p ?? prest)!['longitude'] as num
             : null,
         statutVerificationPrestataire: prest?['statutVerificationPrestataire'],
+        prestataireActif: User.parseActif(prest?['actif']),
       );
     }
 
@@ -103,6 +106,7 @@ class User {
       latitude: json["latitude"],
       longitude: json["longitude"],
       statutVerificationPrestataire: "",
+      prestataireActif: User.parseActif(json['prestataireActif']),
     );
   }
 
@@ -124,10 +128,14 @@ class User {
     'latitude': data.latitude,
     'longitude': data.longitude,
     'statutVerificationPrestataire': data.statutVerificationPrestataire,
+    'prestataireActif': data.prestataireActif,
   };
 
   static String encode(User user) => json.encode(User.toMap(user));
 
   static User decode(String data) =>
       User.fromJson(json.decode(data.toString()));
+
+  static bool parseActif(dynamic value) =>
+      value == true || value == 1 || value == 'true' || value == '1';
 }

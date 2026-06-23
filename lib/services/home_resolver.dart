@@ -74,10 +74,27 @@ Widget _resolveHomeSync({
   required SettingsProvider settings,
   required UserProvider userProvider,
 }) {
-  final statutVerif =
-      userProvider.user!.statutVerification?.toString().toUpperCase() ?? '';
   if (userProvider.user?.role.toLowerCase() == 'prestataire') {
-    if (statutVerif == 'NON_VERIFIE' || statutVerif == 'EN_ATTENTE') {
+    if (userProvider.isPrestataireActif) {
+      if (!userProvider.hasAbonnementValide) {
+        return const HomeAbonnement();
+      }
+      if (settings.locale == null) {
+        return const Settings();
+      }
+      return const HomePrestataire();
+    }
+
+    // actif=false → parcours documents / validation / abonnement.
+    final statutVerif =
+        userProvider.user!.statutVerification?.toString().toUpperCase() ?? '';
+    if (statutVerif == 'NON_VERIFIE') {
+      if (!userProvider.hasAllRequiredPrestataireDocuments) {
+        return const PrestataireUploadDocuments();
+      }
+      return const PrestataireValidateProfil();
+    }
+    if (statutVerif == 'EN_ATTENTE') {
       if (!userProvider.hasAllRequiredPrestataireDocuments) {
         return const PrestataireUploadDocuments();
       }

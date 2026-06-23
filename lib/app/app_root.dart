@@ -70,6 +70,7 @@ class _AppRootState extends State<AppRoot> {
 
     return MaterialApp.router(
       title: 'Mille Services',
+      scrollBehavior: const AppScrollBehavior(),
       theme: ThemeData(
         colorScheme: ColorScheme.fromSeed(seedColor: Colors.deepPurple),
       ),

@@ -1,3 +1,4 @@
+import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
 
@@ -11,19 +12,31 @@ abstract final class KeyboardDismiss {
   }
 }
 
-/// Enveloppe l'app : ferme le clavier si le tap n'est pas sur un champ ou un contrôle interactif.
+/// Scroll behavior app (Material 3, souris + touch).
+class AppScrollBehavior extends MaterialScrollBehavior {
+  const AppScrollBehavior();
+
+  @override
+  Set<PointerDeviceKind> get dragDevices => {
+        PointerDeviceKind.touch,
+        PointerDeviceKind.mouse,
+        PointerDeviceKind.stylus,
+        PointerDeviceKind.trackpad,
+      };
+}
+
+/// Enveloppe l'app : ferme le clavier si le tap n'est pas sur un champ de saisie.
 class KeyboardDismissOnTap extends StatelessWidget {
   const KeyboardDismissOnTap({super.key, required this.child});
 
   final Widget child;
 
-  static bool _shouldDismissForHit(HitTestResult result) {
+  /// Ne pas fermer si le tap vise directement une zone de texte éditable.
+  static bool _tapIsOnTextInput(HitTestResult result) {
     for (final HitTestEntry entry in result.path) {
-      final target = entry.target;
-      if (target is RenderEditable) return false;
-      if (target is RenderSemanticsGestureHandler) return false;
+      if (entry.target is RenderEditable) return true;
     }
-    return true;
+    return false;
   }
 
   @override
@@ -36,8 +49,12 @@ class KeyboardDismissOnTap extends StatelessWidget {
 
         final hitTest = HitTestResult();
         final view = View.of(context);
-        WidgetsBinding.instance.hitTestInView(hitTest, event.position, view.viewId);
-        if (_shouldDismissForHit(hitTest)) {
+        WidgetsBinding.instance.hitTestInView(
+          hitTest,
+          event.position,
+          view.viewId,
+        );
+        if (!_tapIsOnTextInput(hitTest)) {
           focus.unfocus();
         }
       },
@@ -70,7 +87,7 @@ class KeyboardDismissScrollView extends StatelessWidget {
       keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
       child: GestureDetector(
         onTap: () => KeyboardDismiss.unfocus(context),
-        behavior: HitTestBehavior.opaque,
+        behavior: HitTestBehavior.translucent,
         child: child,
       ),
     );

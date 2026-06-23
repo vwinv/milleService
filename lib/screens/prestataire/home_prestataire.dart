@@ -733,6 +733,48 @@ class _HomePrestataireState extends State<HomePrestataire> {
                 ),
                 child: CustomButton(
                   onTap: () {
+                    AppNavigation.pushCompleteDocuments(context);
+                  },
+                  title: Row(
+                    spacing: SizeConfig.blockSizeHorizontal * 2,
+                    children: [
+                      SizedBox(width: SizeConfig.blockSizeHorizontal * 2),
+                      Icon(
+                        Icons.folder_open_outlined,
+                        size: SizeConfig.blockSizeHorizontal * 6,
+                      ),
+                      SizedBox(
+                        width: SizeConfig.blockSizeHorizontal * 65,
+                        child: Text(
+                          'presta_complete_docs_button'.tr(),
+                          style: TextStyle(
+                            fontSize: SizeConfig.fontSize(
+                              SizeConfig.blockSizeHorizontal * 4,
+                            ),
+                            fontWeight: FontWeight.normal,
+                          ),
+                        ),
+                      ),
+                      Icon(
+                        Icons.arrow_forward_ios,
+                        size: SizeConfig.blockSizeHorizontal * 4,
+                      ),
+                    ],
+                  ),
+                  color: Utilities().colorGreyLightDark,
+                  borderColor: Utilities().colorGreyLightDark,
+                  borderRadius: SizeConfig.blockSizeHorizontal * 10,
+                  width: SizeConfig.blockSizeHorizontal * 90,
+                  height: SizeConfig.blockSizeVertical * 6,
+                ),
+              ),
+              Padding(
+                padding: EdgeInsets.symmetric(
+                  horizontal: SizeConfig.blockSizeHorizontal * 5,
+                  vertical: SizeConfig.blockSizeVertical * 1,
+                ),
+                child: CustomButton(
+                  onTap: () {
                     AppNavigation.pushEditInfos(context);
                   },
                   title: Row(

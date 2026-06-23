@@ -23,6 +23,7 @@ import 'package:milleservices/screens/particulier/profil_particulier.dart';
 import 'package:milleservices/screens/prestataire/home_abonnement.dart';
 import 'package:milleservices/screens/prestataire/home_prestataire.dart';
 import 'package:milleservices/screens/prestataire/prestataire_confirm_prestation.dart';
+import 'package:milleservices/screens/prestataire/prestataire_complete_documents.dart';
 import 'package:milleservices/screens/prestataire/prestataire_upload_documents.dart';
 import 'package:milleservices/screens/prestataire/prestataire_validate_profil.dart';
 import 'package:milleservices/screens/prestataire/wallet.dart';
@@ -56,6 +57,20 @@ GoRouter createAppRouter({
       appBootstrap: appBootstrap,
       matchedLocation: state.matchedLocation,
     ),
+    errorBuilder: (context, state) {
+      final target = userProvider.isAuthenticated && userProvider.user != null
+          ? homePathForUser(
+              userProvider: userProvider,
+              settingsProvider: settingsProvider,
+            )
+          : AppRoutes.welcome;
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (context.mounted) context.go(target);
+      });
+      return const Scaffold(
+        body: Center(child: CircularProgressIndicator()),
+      );
+    },
     routes: [
       GoRoute(
         path: AppRoutes.loading,
@@ -146,6 +161,10 @@ GoRouter createAppRouter({
       GoRoute(
         path: AppRoutes.prestataireDocuments,
         builder: (_, __) => const PrestataireUploadDocuments(),
+      ),
+      GoRoute(
+        path: AppRoutes.prestataireCompleteDocuments,
+        builder: (_, __) => const PrestataireCompleteDocuments(),
       ),
       GoRoute(
         path: AppRoutes.prestataireValidation,

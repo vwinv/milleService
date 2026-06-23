@@ -1,13 +1,15 @@
 import 'package:easy_localization/easy_localization.dart';
 import 'package:flutter/material.dart';
-import 'package:milleservices/providers/userProvider.dart';
-import 'package:milleservices/services/app_locale.dart';
+import 'package:go_router/go_router.dart';
 import 'package:milleservices/navigation/app_navigation.dart';
+import 'package:milleservices/providers/settings_provider.dart';
+import 'package:milleservices/providers/userProvider.dart';
+import 'package:milleservices/router/app_routes.dart';
+import 'package:milleservices/services/app_locale.dart';
 import 'package:milleservices/services/sizeConfig.dart';
 import 'package:milleservices/services/utilities.dart';
 import 'package:milleservices/widgets/customButton.dart';
 import 'package:provider/provider.dart';
-import 'package:milleservices/providers/settings_provider.dart';
 
 class Settings extends StatefulWidget {
   const Settings({super.key});
@@ -151,16 +153,29 @@ class _SettingsState extends State<Settings> {
   Future<void> _onCommencer() async {
     final settings = context.read<SettingsProvider>();
     final userProvider = _userProvider ?? context.read<UserProvider>();
-    await applyAppLanguage(context, settings, _selectedLanguage);
+    await settings.setLocaleFromCode(_selectedLanguage);
     if (!mounted) return;
+
     final isGuest = !userProvider.isAuthenticated || userProvider.user == null;
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (!mounted) return;
-      if (isGuest) {
-        AppNavigation.goParticulierHome(context);
+    if (isGuest) {
+      AppNavigation.goParticulierHome(context);
+    } else {
+      final role = userProvider.user!.role?.toString().toUpperCase() ?? '';
+      if (role == 'PRESTATAIRE' && userProvider.isPrestataireActif) {
+        context.go(
+          userProvider.hasAbonnementValide
+              ? AppRoutes.prestataireHome
+              : AppRoutes.prestataireAbonnement,
+        );
       } else {
-        AppNavigation.continueAfterAuth(context);
+        AppNavigation.goHome(context);
       }
-    });
+    }
+
+    if (!mounted) return;
+    final locale = Locale(_selectedLanguage);
+    if (context.locale.languageCode != locale.languageCode) {
+      await context.setLocale(locale);
+    }
   }
 }

@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:math' as math;
 
 import 'package:easy_localization/easy_localization.dart';
@@ -6,8 +7,10 @@ import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:milleservices/controllers/authController.dart';
 import 'package:milleservices/controllers/prestatairesController.dart';
+import 'package:milleservices/providers/settings_provider.dart';
 import 'package:milleservices/providers/userProvider.dart';
 import 'package:milleservices/navigation/app_navigation.dart';
+import 'package:milleservices/router/app_redirect.dart';
 import 'package:milleservices/router/app_routes.dart';
 import 'package:milleservices/models/prestataire_document.dart';
 import 'package:milleservices/services/prestataire_required_documents.dart';
@@ -27,30 +30,102 @@ class PrestataireUploadDocuments extends StatefulWidget {
 }
 
 class _PrestataireUploadDocumentsState
-    extends State<PrestataireUploadDocuments> {
+    extends State<PrestataireUploadDocuments> with WidgetsBindingObserver {
+  static const _pollInterval = Duration(seconds: 10);
+
   final Map<String, PlatformFile?> _pickedFiles = {};
   final Map<String, PrestataireDocument> _existingByType = {};
   bool _isSubmitting = false;
   bool _checkingExisting = true;
+  bool _statusRequestInFlight = false;
+  Timer? _pollTimer;
 
-  List<Map<String, String>> get _requiredDocs => prestataireRequiredDocsCatalog;
+  List<Map<String, String>> get _allDocs => prestataireAllDocsCatalog;
+
+  bool get _hasAllDocsLocally =>
+      _allDocs.every((doc) => _hasFileFor(doc['typeCode']!));
+
+  int get _docsDoneCount =>
+      _allDocs.where((doc) => _hasFileFor(doc['typeCode']!)).length;
 
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      _loadExistingDocuments();
+      _checkVerificationStatus(initialLoad: true);
+    });
+    _pollTimer = Timer.periodic(_pollInterval, (_) {
+      _checkVerificationStatus();
     });
   }
 
-  Future<void> _loadExistingDocuments() async {
-    final userProvider = context.read<UserProvider>();
-    await userProvider.syncPrestataireVerificationIfNeeded();
-    if (!mounted) return;
-    if (userProvider.hasAllRequiredPrestataireDocuments) {
-      context.go(AppRoutes.prestataireValidation);
-      return;
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    _pollTimer?.cancel();
+    super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) {
+      _checkVerificationStatus();
     }
+  }
+
+  Future<void> _checkVerificationStatus({bool initialLoad = false}) async {
+    if (_statusRequestInFlight) return;
+    _statusRequestInFlight = true;
+
+    final userProvider = context.read<UserProvider>();
+    final settingsProvider = context.read<SettingsProvider>();
+    final data = await userProvider.refreshVerificationStatus();
+    _statusRequestInFlight = false;
+    if (!mounted) return;
+
+    if (data != null) {
+      final statut =
+          (data['statutVerification']?.toString().toUpperCase() ?? '');
+      final docs = (data['documents'] is List)
+          ? data['documents'] as List
+          : <dynamic>[];
+      final hasRefusedDoc = docs.any((d) {
+        final s = d is Map ? d['statut']?.toString().toUpperCase() : null;
+        return s == 'REFUSE';
+      });
+
+      if (statut == 'REFUSE' || hasRefusedDoc) {
+        context.go(AppRoutes.prestataireDocumentsRefused);
+        return;
+      }
+      if (statut == 'VERIFIE') {
+        await userProvider.syncPrestataireAbonnementIfNeeded();
+        if (!mounted) return;
+        context.go(
+          homePathForUser(
+            userProvider: userProvider,
+            settingsProvider: settingsProvider,
+          ),
+        );
+        return;
+      }
+      if (isPrestatairePastDocumentValidation(userProvider)) {
+        context.go(
+          homePathForUser(
+            userProvider: userProvider,
+            settingsProvider: settingsProvider,
+          ),
+        );
+        return;
+      }
+      if (userProvider.hasAllRequiredPrestataireDocuments ||
+          _hasAllDocsLocally) {
+        context.go(AppRoutes.prestataireValidation);
+        return;
+      }
+    }
+
     final existing = <String, PrestataireDocument>{};
     for (final doc in userProvider.prestataireDocuments) {
       if (doc.fichierUrl.trim().isEmpty) continue;
@@ -60,7 +135,9 @@ class _PrestataireUploadDocumentsState
       _existingByType
         ..clear()
         ..addAll(existing);
-      _checkingExisting = false;
+      if (initialLoad) {
+        _checkingExisting = false;
+      }
     });
   }
 
@@ -76,6 +153,47 @@ class _PrestataireUploadDocumentsState
 
   bool _hasFileFor(String typeCode) =>
       _pickedFiles[typeCode] != null || _existingByType.containsKey(typeCode);
+
+  bool _isPendingUpload(String typeCode) => _pickedFiles[typeCode] != null;
+
+  void _syncExistingFromProvider(UserProvider userProvider) {
+    final existing = <String, PrestataireDocument>{};
+    for (final doc in userProvider.prestataireDocuments) {
+      if (doc.fichierUrl.trim().isEmpty) continue;
+      existing[doc.typeCode] = doc;
+    }
+    _existingByType
+      ..clear()
+      ..addAll(existing);
+  }
+
+  List<String> _missingDocLabels() => _allDocs
+      .where((doc) => !_hasFileFor(doc['typeCode']!))
+      .map((doc) => doc['label']!)
+      .toList();
+
+  void _mergeUploadedDocumentsLocally(List<Map<String, String>> uploaded) {
+    for (final doc in uploaded) {
+      final typeCode = doc['typeCode']?.trim();
+      final fichierUrl = doc['fichierUrl']?.trim();
+      if (typeCode == null || typeCode.isEmpty) continue;
+      if (fichierUrl == null || fichierUrl.isEmpty) continue;
+      final previous = _existingByType[typeCode];
+      _existingByType[typeCode] = PrestataireDocument(
+        id: previous?.id ?? '',
+        typeCode: typeCode,
+        typeLibelle: previous?.typeLibelle ??
+            kPrestataireDocLabels[typeCode] ??
+            typeCode,
+        obligatoire: isPrestataireValidationRequiredDocType(typeCode),
+        statut: previous?.statut ?? 'EN_ATTENTE',
+        fichierUrl: fichierUrl,
+        nomFichier: doc['nomFichier'],
+        motifRefus: previous?.motifRefus,
+        updatedAt: previous?.updatedAt,
+      );
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -124,7 +242,7 @@ class _PrestataireUploadDocumentsState
             crossAxisAlignment: CrossAxisAlignment.center,
             children: [
               Text(
-                'Pour activer votre compte prestataire, merci de déposer les 4 documents requis.',
+                'presta_onboarding_docs_intro'.tr(),
                 textAlign: TextAlign.center,
                 style: TextStyle(
                   fontSize: SizeConfig.fontSize(
@@ -133,13 +251,55 @@ class _PrestataireUploadDocumentsState
                   color: utilities.colorGreyDark,
                 ),
               ),
+              SizedBox(height: SizeConfig.blockSizeVertical * 1.5),
+              Container(
+                width: double.infinity,
+                padding: EdgeInsets.symmetric(
+                  horizontal: SizeConfig.blockSizeHorizontal * 4,
+                  vertical: SizeConfig.blockSizeVertical * 1.4,
+                ),
+                decoration: BoxDecoration(
+                  color: _hasAllDocsLocally
+                      ? Colors.green.shade50
+                      : utilities.colorBlueLight,
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(
+                    color: _hasAllDocsLocally
+                        ? Colors.green.shade200
+                        : utilities.colorGreyLightDark,
+                  ),
+                ),
+                child: Text(
+                  _hasAllDocsLocally
+                      ? 'presta_upload_ready_validation'.tr()
+                      : 'presta_upload_progress'.tr(
+                          namedArgs: {
+                            'done': _docsDoneCount.toString(),
+                            'total': _allDocs.length.toString(),
+                          },
+                        ),
+                  textAlign: TextAlign.center,
+                  style: TextStyle(
+                    fontSize: SizeConfig.fontSize(
+                      SizeConfig.blockSizeHorizontal * 3.1,
+                    ),
+                    color: _hasAllDocsLocally
+                        ? Colors.green.shade800
+                        : utilities.colorBlueDark,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+              ),
               SizedBox(height: SizeConfig.blockSizeVertical * 3),
-              for (final doc in _requiredDocs) ...[
+              for (final doc in _allDocs) ...[
                 _buildUploadSection(
                   typeCode: doc['typeCode']!,
-                  title: doc['label']!,
+                  title: _titleForDoc(doc),
                   fileName: _displayFileName(doc['typeCode']!),
                   hasFile: _hasFileFor(doc['typeCode']!),
+                  isPending: _isPendingUpload(doc['typeCode']!),
+                  isSaved: _existingByType.containsKey(doc['typeCode']!) &&
+                      !_isPendingUpload(doc['typeCode']!),
                   onTap: () => _pickFileFor(doc['typeCode']!),
                 ),
                 SizedBox(height: SizeConfig.blockSizeVertical * 2.4),
@@ -188,11 +348,21 @@ class _PrestataireUploadDocumentsState
     );
   }
 
+  String _titleForDoc(Map<String, String> doc) {
+    final label = doc['label']!;
+    if (isPrestataireValidationRequiredDocType(doc['typeCode']!)) {
+      return label;
+    }
+    return '$label (${'presta_doc_optional'.tr()})';
+  }
+
   Widget _buildUploadSection({
     required String typeCode,
     required String title,
     required String? fileName,
     required bool hasFile,
+    required bool isPending,
+    required bool isSaved,
     required VoidCallback onTap,
   }) {
     final utilities = Utilities();
@@ -207,6 +377,29 @@ class _PrestataireUploadDocumentsState
             fontSize: SizeConfig.fontSize(SizeConfig.blockSizeHorizontal * 3.4),
           ),
         ),
+        if (isPending) ...[
+          SizedBox(height: SizeConfig.blockSizeVertical * 0.5),
+          Text(
+            'presta_upload_pending_hint'.tr(),
+            style: TextStyle(
+              color: Colors.orange.shade800,
+              fontSize: SizeConfig.fontSize(
+                SizeConfig.blockSizeHorizontal * 2.8,
+              ),
+            ),
+          ),
+        ] else if (isSaved) ...[
+          SizedBox(height: SizeConfig.blockSizeVertical * 0.5),
+          Text(
+            'presta_upload_saved_hint'.tr(),
+            style: TextStyle(
+              color: Colors.green.shade700,
+              fontSize: SizeConfig.fontSize(
+                SizeConfig.blockSizeHorizontal * 2.8,
+              ),
+            ),
+          ),
+        ],
         SizedBox(height: SizeConfig.blockSizeVertical * 1.1),
         InkWell(
           onTap: onTap,
@@ -281,22 +474,10 @@ class _PrestataireUploadDocumentsState
 
   Future<void> _onSubmit() async {
     final userProvider = Provider.of<UserProvider>(context, listen: false);
-    final missing = _requiredDocs
-        .where((doc) => !_hasFileFor(doc['typeCode']!))
-        .map((doc) => doc['label']!)
-        .toList();
-    if (missing.isNotEmpty) {
-      Utilities().showMesage(
-        context,
-        'error',
-        'Veuillez fournir les 4 documents requis.',
-      );
-      return;
-    }
 
     final documents = <Map<String, String>>[];
 
-    for (final doc in _requiredDocs) {
+    for (final doc in _allDocs) {
       final typeCode = doc['typeCode']!;
       final picked = _pickedFiles[typeCode];
       if (picked == null) continue;
@@ -323,7 +504,16 @@ class _PrestataireUploadDocumentsState
 
     if (documents.isEmpty) {
       if (!mounted) return;
-      context.go(AppRoutes.prestataireValidation);
+      if (userProvider.hasAllRequiredPrestataireDocuments ||
+          _hasAllDocsLocally) {
+        context.go(AppRoutes.prestataireValidation);
+        return;
+      }
+      Utilities().showMesage(
+        context,
+        'error',
+        'presta_upload_nothing_selected'.tr(),
+      );
       return;
     }
 
@@ -346,21 +536,37 @@ class _PrestataireUploadDocumentsState
       if (res.success == true) {
         await userProvider.refreshVerificationStatus();
         if (!mounted) return;
-        Utilities().showMesage(
-          context,
-          'success',
-          'Documents envoyés. Vérification en cours.',
-        );
-        context.go(
-          userProvider.hasAllRequiredPrestataireDocuments
-              ? AppRoutes.prestataireValidation
-              : AppRoutes.prestataireDocuments,
-        );
+        setState(() {
+          _pickedFiles.clear();
+          _syncExistingFromProvider(userProvider);
+          _mergeUploadedDocumentsLocally(documents);
+        });
+        final readyForValidation = _hasAllDocsLocally ||
+            userProvider.hasAllRequiredPrestataireDocuments;
+        final missing = _missingDocLabels();
+        if (readyForValidation) {
+          Utilities().showMesage(
+            context,
+            'success',
+            'Documents envoyés. Vérification en cours.',
+          );
+          context.go(AppRoutes.prestataireValidation);
+        } else {
+          Utilities().showMesage(
+            context,
+            'success',
+            'presta_upload_saved_partial'.tr(
+              namedArgs: {'missing': missing.join(', ')},
+            ),
+          );
+        }
       } else {
         Utilities().showMesage(
           context,
           'error',
-          res.message ?? 'Envoi impossible',
+          res.message?.toString().trim().isNotEmpty == true
+              ? res.message.toString()
+              : 'Envoi impossible',
         );
       }
     } finally {

@@ -526,14 +526,17 @@ class PrestatairesController {
       );
 
       final raw = response.data;
-      final data =
-          raw is Map ? raw : <String, dynamic>{};
+      final data = raw is Map ? raw : <String, dynamic>{};
+      final status = response.statusCode ?? 0;
+      final httpOk = status >= 200 && status < 300;
+      final bodySuccess = data['success'];
+      final ok = httpOk && bodySuccess != false;
 
       return ResponseData.fromJson({
-        "success": response.statusCode == 200,
-        "data": data["data"] ?? data,
-        "message": (data["message"] ?? "").toString(),
-        "status": response.statusCode,
+        "success": ok,
+        "data": data["data"] ?? (ok ? data : null),
+        "message": _messageFromApiBody(data),
+        "status": status,
         "emailNotVerified": false,
       });
     } on DioException catch (e) {

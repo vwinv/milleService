@@ -35,7 +35,7 @@ class PrestataireValidateProfil extends StatefulWidget {
 
 class _PrestataireValidateProfilState extends State<PrestataireValidateProfil>
     with WidgetsBindingObserver {
-  static const _pollInterval = Duration(seconds: 20);
+  static const _pollInterval = Duration(seconds: 10);
 
   bool _checkingStatus = true;
   bool _statusRequestInFlight = false;
@@ -46,6 +46,17 @@ class _PrestataireValidateProfilState extends State<PrestataireValidateProfil>
     super.initState();
     WidgetsBinding.instance.addObserver(this);
     WidgetsBinding.instance.addPostFrameCallback((_) {
+      final userProvider = context.read<UserProvider>();
+      final settingsProvider = context.read<SettingsProvider>();
+      if (isPrestatairePastDocumentValidation(userProvider)) {
+        context.go(
+          homePathForUser(
+            userProvider: userProvider,
+            settingsProvider: settingsProvider,
+          ),
+        );
+        return;
+      }
       _checkVerificationStatus(initialLoad: true);
     });
     _pollTimer = Timer.periodic(_pollInterval, (_) {
@@ -103,7 +114,8 @@ class _PrestataireValidateProfilState extends State<PrestataireValidateProfil>
         context.go(AppRoutes.prestataireDocuments);
         return;
       }
-      if (statut == 'VERIFIE') {
+      if (statut == 'VERIFIE' ||
+          isPrestatairePastDocumentValidation(userProvider)) {
         context.go(
           homePathForUser(
             userProvider: userProvider,

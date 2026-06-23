@@ -22,18 +22,20 @@ class HomeAbonnement extends StatefulWidget {
 }
 
 class _HomeAbonnementState extends State<HomeAbonnement> {
-  bool _localLoading = false;
+  bool _localLoading = true;
   String? _error;
   Offre? _selectedOffre;
 
   @override
   void initState() {
     super.initState();
-    Future.microtask(() async {
-      await context.read<UserProvider>().syncPrestataireAbonnementIfNeeded();
-      if (!mounted) return;
-      await _loadOffres();
-    });
+    Future.microtask(_bootstrap);
+  }
+
+  Future<void> _bootstrap() async {
+    await context.read<UserProvider>().syncPrestataireAbonnementIfNeeded();
+    if (!mounted) return;
+    await _loadOffres();
   }
 
   /// Pré-sélectionne la première offre si la liste est déjà dispo (ex. cache).
@@ -116,9 +118,7 @@ class _HomeAbonnementState extends State<HomeAbonnement> {
     Utilities().showMesage(
       context,
       'success',
-      'abonnement_success'.tr(
-        namedArgs: {'libelle': selected.libelle ?? ''},
-      ),
+      'abonnement_success'.tr(namedArgs: {'libelle': selected.libelle ?? ''}),
     );
     AppNavigation.goHome(context);
   }
@@ -176,7 +176,9 @@ class _HomeAbonnementState extends State<HomeAbonnement> {
     }
 
     setState(() => _localLoading = true);
-    final res = await userProvider.initPaydunyaAbonnement(selected.id.toString());
+    final res = await userProvider.initPaydunyaAbonnement(
+      selected.id.toString(),
+    );
     if (!mounted) return;
     setState(() => _localLoading = false);
     if (res.success != true || res.data is! Map) {
@@ -223,54 +225,55 @@ class _HomeAbonnementState extends State<HomeAbonnement> {
           offreIdAttendu: selected.id.toString(),
           isMounted: () => mounted,
         ),
-        onSoftPay: ({
-          required String method,
-          required String prenom,
-          required String nom,
-          required String telephone,
-          String? email,
-        }) async {
-          switch (method) {
-            case 'wave_sn':
-              return auth.payAbonnementWaveSn(
-                token: token,
-                offreId: selected.id.toString(),
-                invoiceToken: invoiceToken,
-                prenom: prenom,
-                nom: nom,
-                telephone: telephone,
-                email: email,
-              );
-            case 'orange_money_sn':
-              return auth.payAbonnementOrangeMoneySn(
-                token: token,
-                offreId: selected.id.toString(),
-                invoiceToken: invoiceToken,
-                prenom: prenom,
-                nom: nom,
-                telephone: telephone,
-                email: email,
-              );
-            case 'free_money_sn':
-              return auth.payAbonnementFreeMoneySn(
-                token: token,
-                offreId: selected.id.toString(),
-                invoiceToken: invoiceToken,
-                prenom: prenom,
-                nom: nom,
-                telephone: telephone,
-                email: email,
-              );
-            default:
-              return ResponseData(
-                success: false,
-                message: 'Moyen inconnu',
-                data: null,
-                status: 400,
-                emailNotVerified: false,
-              );
-          }
-        },
+        onSoftPay:
+            ({
+              required String method,
+              required String prenom,
+              required String nom,
+              required String telephone,
+              String? email,
+            }) async {
+              switch (method) {
+                case 'wave_sn':
+                  return auth.payAbonnementWaveSn(
+                    token: token,
+                    offreId: selected.id.toString(),
+                    invoiceToken: invoiceToken,
+                    prenom: prenom,
+                    nom: nom,
+                    telephone: telephone,
+                    email: email,
+                  );
+                case 'orange_money_sn':
+                  return auth.payAbonnementOrangeMoneySn(
+                    token: token,
+                    offreId: selected.id.toString(),
+                    invoiceToken: invoiceToken,
+                    prenom: prenom,
+                    nom: nom,
+                    telephone: telephone,
+                    email: email,
+                  );
+                case 'free_money_sn':
+                  return auth.payAbonnementFreeMoneySn(
+                    token: token,
+                    offreId: selected.id.toString(),
+                    invoiceToken: invoiceToken,
+                    prenom: prenom,
+                    nom: nom,
+                    telephone: telephone,
+                    email: email,
+                  );
+                default:
+                  return ResponseData(
+                    success: false,
+                    message: 'Moyen inconnu',
+                    data: null,
+                    status: 400,
+                    emailNotVerified: false,
+                  );
+              }
+            },
       ),
     );
     if (!mounted || paid != true) return;
@@ -433,8 +436,8 @@ class _HomeAbonnementState extends State<HomeAbonnement> {
                                         Text(
                                           '${_formatPrix(offre.prix)} FCFA',
                                           style: TextStyle(
-                                            fontSize: SizeConfig
-                                                    .blockSizeHorizontal *
+                                            fontSize:
+                                                SizeConfig.blockSizeHorizontal *
                                                 3.8,
                                             fontWeight: FontWeight.bold,
                                             color: utils.colorBlueDark,
@@ -444,8 +447,8 @@ class _HomeAbonnementState extends State<HomeAbonnement> {
                                         Text(
                                           _subtitleForOffre(offre),
                                           style: TextStyle(
-                                            fontSize: SizeConfig
-                                                    .blockSizeHorizontal *
+                                            fontSize:
+                                                SizeConfig.blockSizeHorizontal *
                                                 2.8,
                                             color: utils.colorGreyDark,
                                           ),
