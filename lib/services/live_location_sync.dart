@@ -6,6 +6,7 @@ class LiveLocationSync {
   LiveLocationSync._();
 
   static const String _prefKey = 'live_location_last_server_success_ms';
+  static const String trackingPrefKey = 'live_location_tracking_active';
   static const Duration minInterval = Duration(seconds: 45);
 
   static Future<bool> shouldSendToServer() async {

@@ -10,10 +10,10 @@ import 'package:milleservices/services/sizeConfig.dart';
 //
 // Change la ligne active selon ton environnement :
 //
-//const String kBackendBaseUrl = 'http://127.0.0.1:3001'; // iOS sim / macOS
+const String kBackendBaseUrl = 'http://0.0.0.0:3001'; // iOS sim / macOS
 // const String kBackendBaseUrl = 'http://10.0.2.2:3001'; // Android émulateur
-const String kBackendBaseUrl =
-    'https://milleservice-backend-aacp.onrender.com'; // Render
+//const String kBackendBaseUrl =
+//  'https://milleservice-backend-aacp.onrender.com'; // Render
 //
 // Sans toucher le code (ex. téléphone physique → IP du Mac) :
 //   flutter run --dart-define=API_BASE_URL=http://192.168.1.10:3001

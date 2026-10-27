@@ -11,6 +11,7 @@ import 'package:milleservices/models/prestataire_document.dart';
 import 'package:milleservices/services/prestataire_required_documents.dart';
 import 'package:milleservices/models/user.dart';
 import 'package:milleservices/models/response.dart';
+import 'package:milleservices/controllers/prestationsController.dart';
 import 'package:milleservices/services/live_location_foreground_service.dart';
 import 'package:milleservices/services/live_location_sync.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -208,7 +209,7 @@ class UserProvider extends ChangeNotifier {
         await syncPrestataireVerificationIfNeeded();
         await syncPrestataireAbonnementIfNeeded();
       }
-      await LiveLocationForegroundService.startIfAuthenticated(_user, _token);
+      await syncLiveLocationTracking();
       notifyListeners();
     }
     setLoading(false);
@@ -251,7 +252,7 @@ class UserProvider extends ChangeNotifier {
           await syncPrestataireVerificationIfNeeded();
           await syncPrestataireAbonnementIfNeeded();
         }
-        await LiveLocationForegroundService.startIfAuthenticated(_user, _token);
+        await syncLiveLocationTracking();
         notifyListeners();
       }
       return data;
@@ -301,7 +302,32 @@ class UserProvider extends ChangeNotifier {
     }
     _initialLoadDone = true;
     notifyListeners();
-    await LiveLocationForegroundService.startIfAuthenticated(_user, _token);
+    await syncLiveLocationTracking();
+  }
+
+  /// Suivi GPS en arrière-plan seulement s'il reste une prestation acceptée ou en cours.
+  Future<void> syncLiveLocationTracking() async {
+    if (_token == null || _token!.isEmpty || _user == null) {
+      await LiveLocationForegroundService.stop();
+      return;
+    }
+    final res = await PrestationsController.instance.getMyPrestations(_token!);
+    var needed = false;
+    if (res.success == true && res.data is List) {
+      for (final item in res.data as List) {
+        if (item is! Map) continue;
+        final statut = item['statut']?.toString();
+        if (statut == 'ACCEPTEE' || statut == 'EN_COURS') {
+          needed = true;
+          break;
+        }
+      }
+    }
+    await LiveLocationForegroundService.apply(
+      needed: needed,
+      user: _user,
+      token: _token,
+    );
   }
 
   /// Enregistre l’URL de photo sur le backend puis dans le [User] local.
@@ -631,10 +657,11 @@ class UserProvider extends ChangeNotifier {
         role: u.role,
         latitude: lat,
         longitude: lng,
-            statutVerificationPrestataire: u.statutVerificationPrestataire,
-            prestataireActif: u.prestataireActif,
-          );
-      notifyListeners();
+        statutVerificationPrestataire: u.statutVerificationPrestataire,
+        prestataireActif: u.prestataireActif,
+      );
+      // Pas de notifyListeners : UserProvider est dans refreshListenable du
+      // GoRouter ; un rebuild perdrait state.extra (écran « Prestation introuvable »).
       final prefs = await SharedPreferences.getInstance();
       await prefs.setString("user", User.encode(_user!));
     }
@@ -866,7 +893,7 @@ class UserProvider extends ChangeNotifier {
         await prefs.setString("user", User.encode(_user!));
         await _persistAbonnementCache(prefs);
         await _purgeInvalidAbonnementCache();
-        await LiveLocationForegroundService.startIfAuthenticated(_user, _token);
+        await syncLiveLocationTracking();
       }
 
       return data;
@@ -912,7 +939,7 @@ class UserProvider extends ChangeNotifier {
         await prefs.setString("Rtoken", _Rtoken!);
         await prefs.setString("user", User.encode(_user!));
         await prefs.remove("abonnement");
-        await LiveLocationForegroundService.startIfAuthenticated(_user, _token);
+        await syncLiveLocationTracking();
       }
 
       return data;

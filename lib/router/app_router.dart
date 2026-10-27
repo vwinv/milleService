@@ -11,7 +11,7 @@ import 'package:milleservices/router/route_extras.dart';
 import 'package:milleservices/screens/authentification/forgot_password.dart';
 import 'package:milleservices/screens/authentification/login.dart';
 import 'package:milleservices/screens/authentification/signup.dart';
-import 'package:milleservices/screens/deroulement_prestation.dart';
+import 'package:milleservices/screens/deroulement_prestation_entry.dart';
 import 'package:milleservices/screens/edit_infos.dart';
 import 'package:milleservices/screens/historique.dart';
 import 'package:milleservices/screens/notification_list.dart';
@@ -145,13 +145,13 @@ GoRouter createAppRouter({
       GoRoute(
         path: '/particulier/prestations/:id',
         builder: (context, state) {
-          final prestation = state.extra as Prestation?;
-          if (prestation == null) {
-            return const _RouteErrorScreen(
-              message: 'Prestation introuvable (navigation).',
-            );
-          }
-          return DeroulementPrestation(prestation: prestation);
+          final id = state.pathParameters['id'] ?? '';
+          final extra = state.extra;
+          final prestation = extra is Prestation ? extra : null;
+          return DeroulementPrestationEntry(
+            prestationId: id,
+            initial: prestation,
+          );
         },
       ),
       GoRoute(
@@ -181,13 +181,13 @@ GoRouter createAppRouter({
       GoRoute(
         path: '/prestataire/prestations/:id',
         builder: (context, state) {
-          final prestation = state.extra as Prestation?;
-          if (prestation == null) {
-            return const _RouteErrorScreen(
-              message: 'Prestation introuvable (navigation).',
-            );
-          }
-          return DeroulementPrestation(prestation: prestation);
+          final id = state.pathParameters['id'] ?? '';
+          final extra = state.extra;
+          final prestation = extra is Prestation ? extra : null;
+          return DeroulementPrestationEntry(
+            prestationId: id,
+            initial: prestation,
+          );
         },
       ),
       GoRoute(
@@ -214,7 +214,10 @@ GoRouter createAppRouter({
         builder: (context, state) {
           final extra = state.extra;
           if (extra is HistoriqueExtra) {
-            return Historique(prestations: extra.prestations);
+            return Historique(
+              prestations: extra.prestations,
+              refreshFilter: extra.refreshFilter,
+            );
           }
           return const Historique(prestations: []);
         },

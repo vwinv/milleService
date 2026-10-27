@@ -5,6 +5,7 @@ import 'package:flutter/scheduler.dart';
 import 'package:milleservices/controllers/prestationsController.dart';
 import 'package:milleservices/models/prestation.dart';
 import 'package:milleservices/providers/userProvider.dart';
+import 'package:milleservices/services/live_location_foreground_service.dart';
 
 /// Provider pour gérer les prestations de l'utilisateur connecté
 /// (particulier ou prestataire).
@@ -72,7 +73,9 @@ class PrestationsProvider extends ChangeNotifier {
         final prestation = Prestation.fromJson(
           Map<String, dynamic>.from(res.data as Map),
         );
-        _prestationStreamController!.add(prestation);
+        if (_publish(prestation)) {
+          unawaited(_applyLiveTracking(userProvider));
+        }
       }
 
       await Future.delayed(interval);
@@ -100,10 +103,29 @@ class PrestationsProvider extends ChangeNotifier {
     if (prestationId.isEmpty || _prestationStreamController == null) return;
     final res = await _controller.getPrestationById(token, prestationId);
     if (res.success == true && res.data != null && res.data is Map) {
-      _prestationStreamController?.add(
-        Prestation.fromJson(Map<String, dynamic>.from(res.data as Map)),
+      final prestation = Prestation.fromJson(
+        Map<String, dynamic>.from(res.data as Map),
       );
+      _publish(prestation);
     }
+  }
+
+  /// Pousse une prestation déjà connue (ex. réponse d’annulation) sans attendre le poll.
+  void publishPrestation(Prestation prestation) {
+    _publish(prestation);
+  }
+
+  /// Ne remplace pas une annulation par un statut plus ancien encore en vol.
+  bool _publish(Prestation incoming) {
+    final index = _myPrestations.indexWhere((p) => p.id == incoming.id);
+    if (index >= 0 &&
+        _myPrestations[index].isAnnulee &&
+        !incoming.isAnnulee) {
+      return false;
+    }
+    _remember(incoming);
+    _prestationStreamController?.add(incoming);
+    return true;
   }
 
   /// Marque la prestation comme payée puis rafraîchit le stream (fetch once + emit).
@@ -164,6 +186,27 @@ class PrestationsProvider extends ChangeNotifier {
 
     _isLoading = false;
     notifyListeners();
+    if (res.success == true) {
+      await _applyLiveTracking(userProvider);
+    }
+  }
+
+  void _remember(Prestation prestation) {
+    final index = _myPrestations.indexWhere((p) => p.id == prestation.id);
+    if (index >= 0) {
+      _myPrestations[index] = prestation;
+    } else {
+      _myPrestations.add(prestation);
+    }
+  }
+
+  Future<void> _applyLiveTracking(UserProvider userProvider) {
+    final needed = _myPrestations.any((p) => p.isAcceptee || p.isEnCours);
+    return LiveLocationForegroundService.apply(
+      needed: needed,
+      user: userProvider.user,
+      token: userProvider.token,
+    );
   }
 }
 

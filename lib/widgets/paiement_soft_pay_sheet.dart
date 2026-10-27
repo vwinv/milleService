@@ -850,7 +850,7 @@ class _PaiementSoftPaySheetState extends State<PaiementSoftPaySheet> {
                   if (result.paydunyaCheckoutUrl != null &&
                       result.paydunyaCheckoutUrl!.isNotEmpty)
                     _payUrlButton(
-                      label: 'Ouvrir la page PayDunya',
+                      label: 'Ouvrir la page SamirPay',
                       url: result.paydunyaCheckoutUrl!,
                       filled:
                           result.primaryUrl == null ||

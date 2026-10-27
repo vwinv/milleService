@@ -18,9 +18,16 @@ class ConfirmPrestationExtra {
 
 /// Liste passée à [Historique].
 class HistoriqueExtra {
-  const HistoriqueExtra({required this.prestations});
+  const HistoriqueExtra({
+    required this.prestations,
+    this.refreshFilter,
+  });
 
   final List<Prestation> prestations;
+
+  /// `en_attente` ou `terminee` : la liste se recharge et retire les prestations
+  /// qui ne correspondent plus (ex. annulée par le client).
+  final String? refreshFilter;
 }
 
 /// Acceptation / refus prestataire (prestation en attente).

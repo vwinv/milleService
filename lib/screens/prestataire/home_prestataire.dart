@@ -148,8 +148,12 @@ class _HomePrestataireState extends State<HomePrestataire> {
           .toList();
     }
     if (!mounted) return;
-    AppNavigation.pushHistorique(context, list).then((value) {
-      if (value == true && mounted) _loadPrestationStats();
+    AppNavigation.pushHistorique(
+      context,
+      list,
+      refreshFilter: filter,
+    ).then((_) {
+      if (mounted) _loadPrestationStats();
     });
   }
 
@@ -301,6 +305,7 @@ class _HomePrestataireState extends State<HomePrestataire> {
 
   @override
   Widget build(BuildContext context) {
+    SizeConfig().init(context);
     final userProvider = context.watch<UserProvider>();
     final user = userProvider.user;
     final avatarUrl = userProvider.avatarUrlForDisplay;
@@ -931,65 +936,6 @@ child: Text(
                   currentLabel: currentLabel,
                   currentCode: currentCode,
                   settings: settings,
-                ),
-              ),
-              Padding(
-                padding: EdgeInsets.symmetric(
-                  horizontal: SizeConfig.blockSizeHorizontal * 5,
-                  vertical: SizeConfig.blockSizeVertical * 1,
-                ),
-                child: CustomButton(
-                  onTap: () async {
-                    final res = await userProvider.becomeParticulier();
-                    if (!mounted) return;
-                    if (res.success == true) {
-                      Utilities().showMesage(
-                        context,
-                        'success',
-                        'presta_become_client_success'.tr(),
-                      );
-                      await AppNavigation.signOut(context);
-                      AppNavigation.goWelcome(context);
-                    } else {
-                      Utilities().showMesage(
-                        context,
-                        'error',
-                        res.message ??
-                            'presta_operation_failed'.tr(),
-                      );
-                    }
-                  },
-                  title: Row(
-                    spacing: SizeConfig.blockSizeHorizontal * 2,
-                    children: [
-                      SizedBox(width: SizeConfig.blockSizeHorizontal * 2),
-
-                      SizedBox(
-                        width: SizeConfig.blockSizeHorizontal * 65,
-                        child: Text(
-                          'presta_become_client'.tr(),
-                          style: TextStyle(
-                            color: Colors.white,
-                            fontSize: SizeConfig.fontSize(
-                              SizeConfig.blockSizeHorizontal * 4,
-                            ),
-                            fontWeight: FontWeight.normal,
-                          ),
-                        ),
-                      ),
-
-                      Icon(
-                        Icons.arrow_forward_ios,
-                        size: SizeConfig.blockSizeHorizontal * 4,
-                        color: Colors.white,
-                      ),
-                    ],
-                  ),
-                  color: Utilities().colorBlueDark,
-                  borderColor: Utilities().colorBlueDark,
-                  borderRadius: SizeConfig.blockSizeHorizontal * 10,
-                  width: SizeConfig.blockSizeHorizontal * 90,
-                  height: SizeConfig.blockSizeVertical * 6,
                 ),
               ),
               SizedBox(height: SizeConfig.blockSizeVertical * 2),

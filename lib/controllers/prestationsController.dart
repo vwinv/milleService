@@ -667,6 +667,151 @@ class PrestationsController {
     }
   }
 
+  /// Annule une demande (particulier), tant que le prestataire n'a pas démarré.
+  /// PATCH /prestations/:id/annuler
+  Future<ResponseData> annuler(String token, String prestationId) async {
+    try {
+      final hasInternet = await _checkInternetConnection();
+      if (!hasInternet) {
+        return ResponseData(
+          success: false,
+          message:
+              "Aucune connexion internet. Veuillez vérifier votre connexion et réessayer.",
+          data: null,
+          status: 0,
+          emailNotVerified: false,
+        );
+      }
+      final response = await dio.patch(
+        '/prestations/$prestationId/annuler',
+        options: Options(
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': 'Bearer $token',
+          },
+          validateStatus: (status) => status != null && status < 500,
+        ),
+      );
+      final raw = response.data;
+      final data = raw is Map && raw['data'] != null
+          ? raw['data']
+          : raw is Map
+              ? raw
+              : null;
+      return ResponseData.fromJson({
+        'success': response.statusCode == 200,
+        'data': data,
+        'message': raw is Map ? (raw['message'] ?? '') : '',
+        'status': response.statusCode,
+        'emailNotVerified': false,
+      });
+    } on DioException catch (e) {
+      if (e.response != null) {
+        return ResponseData.fromJson({
+          'success': false,
+          'data': null,
+          'status': e.response!.statusCode,
+          'message': e.response?.data is Map
+              ? (e.response!.data['message'] ?? 'Erreur serveur')
+              : 'Erreur serveur',
+          'emailNotVerified': false,
+        });
+      }
+      return ResponseData.fromJson({
+        'success': false,
+        'data': null,
+        'status': 500,
+        'message': 'Erreur réseau',
+        'emailNotVerified': false,
+      });
+    } catch (e) {
+      return ResponseData.fromJson({
+        'success': false,
+        'data': null,
+        'status': 500,
+        'message': 'Erreur inconnue',
+        'emailNotVerified': false,
+      });
+    }
+  }
+
+  /// Note et commentaire du client après paiement. POST /prestations/:id/avis
+  Future<ResponseData> noterPrestation(
+    String token,
+    String prestationId, {
+    required int note,
+    String? commentaire,
+  }) async {
+    try {
+      final hasInternet = await _checkInternetConnection();
+      if (!hasInternet) {
+        return ResponseData(
+          success: false,
+          message:
+              "Aucune connexion internet. Veuillez vérifier votre connexion et réessayer.",
+          data: null,
+          status: 0,
+          emailNotVerified: false,
+        );
+      }
+      final response = await dio.post(
+        '/prestations/$prestationId/avis',
+        data: {
+          'note': note,
+          if (commentaire != null && commentaire.trim().isNotEmpty)
+            'commentaire': commentaire.trim(),
+        },
+        options: Options(
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': 'Bearer $token',
+          },
+          validateStatus: (status) => status != null && status < 500,
+        ),
+      );
+      final raw = response.data;
+      final data = raw is Map && raw['data'] != null
+          ? raw['data']
+          : raw is Map
+              ? raw
+              : null;
+      return ResponseData.fromJson({
+        'success': response.statusCode == 200 || response.statusCode == 201,
+        'data': data,
+        'message': raw is Map ? (raw['message'] ?? '') : '',
+        'status': response.statusCode,
+        'emailNotVerified': false,
+      });
+    } on DioException catch (e) {
+      if (e.response != null) {
+        return ResponseData.fromJson({
+          'success': false,
+          'data': null,
+          'status': e.response!.statusCode,
+          'message': e.response?.data is Map
+              ? (e.response!.data['message'] ?? 'Erreur serveur')
+              : 'Erreur serveur',
+          'emailNotVerified': false,
+        });
+      }
+      return ResponseData.fromJson({
+        'success': false,
+        'data': null,
+        'status': 500,
+        'message': 'Erreur réseau',
+        'emailNotVerified': false,
+      });
+    } catch (e) {
+      return ResponseData.fromJson({
+        'success': false,
+        'data': null,
+        'status': 500,
+        'message': 'Erreur inconnue',
+        'emailNotVerified': false,
+      });
+    }
+  }
+
   /// Démarre une prestation (prestataire arrivé chez le client). PATCH /prestations/:id/demarrer
   Future<ResponseData> demarrer(String token, String prestationId) async {
     try {

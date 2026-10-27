@@ -20,6 +20,10 @@ class Prestation {
   final PrestationParticulier? particulier;
   final Prestataire? prestataire;
   final PrestationService? service;
+  final int? avisNote;
+  final String? avisCommentaire;
+  /// PARTICULIER ou PRESTATAIRE quand la prestation est annulée.
+  final String? annulePar;
 
   Prestation({
     required this.id,
@@ -39,6 +43,9 @@ class Prestation {
     this.particulier,
     this.prestataire,
     this.service,
+    this.avisNote,
+    this.avisCommentaire,
+    this.annulePar,
   });
 
   factory Prestation.fromJson(Map<String, dynamic> json) {
@@ -76,6 +83,11 @@ class Prestation {
       service: json['service'] is Map
           ? PrestationService.fromJson(json['service'] as Map<String, dynamic>)
           : null,
+      avisNote: _parseAvisNote(json['avis']),
+      avisCommentaire: json['avis'] is Map
+          ? json['avis']['commentaire']?.toString()
+          : null,
+      annulePar: json['annulePar']?.toString(),
     );
   }
 
@@ -142,6 +154,14 @@ double? _parseDouble(dynamic v) {
   if (v == null) return null;
   if (v is num) return v.toDouble();
   return double.tryParse(v.toString());
+}
+
+int? _parseAvisNote(dynamic avis) {
+  if (avis is! Map) return null;
+  final raw = avis['note'];
+  if (raw is int) return raw;
+  if (raw is num) return raw.toInt();
+  return int.tryParse(raw?.toString() ?? '');
 }
 
 class PrestationService {

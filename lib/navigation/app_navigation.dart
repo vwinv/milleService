@@ -186,11 +186,15 @@ abstract final class AppNavigation {
 
   static Future<T?> pushHistorique<T>(
     BuildContext context,
-    List<Prestation> prestations,
-  ) {
+    List<Prestation> prestations, {
+    String? refreshFilter,
+  }) {
     return context.push<T>(
       AppRoutes.historique,
-      extra: HistoriqueExtra(prestations: prestations),
+      extra: HistoriqueExtra(
+        prestations: prestations,
+        refreshFilter: refreshFilter,
+      ),
     );
   }
 

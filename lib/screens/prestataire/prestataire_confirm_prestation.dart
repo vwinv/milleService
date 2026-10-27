@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:milleservices/controllers/prestationsController.dart';
 import 'package:milleservices/models/prestation.dart';
@@ -27,6 +29,51 @@ class _PrestataireConfirmPrestationState
   bool _isAccepting = false;
   bool _isRefusing = false;
   bool _hasNewNotifications = false;
+  Timer? _watchTimer;
+  bool _closedBecauseCancelled = false;
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      unawaited(_watchCancellation());
+    });
+    _watchTimer = Timer.periodic(const Duration(seconds: 3), (_) {
+      unawaited(_watchCancellation());
+    });
+  }
+
+  @override
+  void dispose() {
+    _watchTimer?.cancel();
+    super.dispose();
+  }
+
+  Future<void> _watchCancellation() async {
+    if (!mounted || _closedBecauseCancelled || _isAccepting || _isRefusing) {
+      return;
+    }
+    final token = context.read<UserProvider>().token;
+    if (token == null || token.isEmpty) return;
+    final res = await _prestationsController.getPrestationById(
+      token,
+      widget.prestation.id,
+    );
+    if (!mounted || _closedBecauseCancelled) return;
+    if (res.success != true || res.data is! Map) return;
+    final updated = Prestation.fromJson(
+      Map<String, dynamic>.from(res.data as Map),
+    );
+    if (!updated.isAnnulee) return;
+    _closedBecauseCancelled = true;
+    _watchTimer?.cancel();
+    Utilities().showMesage(
+      context,
+      'info',
+      'Le client a annulé cette prestation.',
+    );
+    AppNavigation.pop(context, false);
+  }
 
   Future<void> _accepter() async {
     final userProvider = context.read<UserProvider>();
@@ -66,12 +113,15 @@ class _PrestataireConfirmPrestationState
       );
       return;
     }
+    Prestation updated = widget.prestation;
     final data = res.data;
-    if (data is! Map<String, dynamic>) {
-      Utilities().showMesage(context, 'error', 'Réponse serveur invalide.');
-      return;
+    if (data is Map) {
+      try {
+        updated = Prestation.fromJson(Map<String, dynamic>.from(data));
+      } catch (_) {
+        updated = widget.prestation;
+      }
     }
-    final updated = Prestation.fromJson(data);
     AppNavigation.goPrestatairePrestation(context, updated);
   }
 

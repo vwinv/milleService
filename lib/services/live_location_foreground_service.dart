@@ -4,10 +4,13 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_foreground_task/flutter_foreground_task.dart';
 import 'package:milleservices/models/user.dart';
+import 'package:milleservices/services/live_location_sync.dart';
 import 'package:milleservices/services/live_location_task_handler.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
-/// Service Android (premier plan, notification persistante) + cadence iOS limitée par le système.
-/// Continue d’envoyer la position tant que l’utilisateur est connecté (particulier ou prestataire).
+/// Service Android (premier plan) uniquement pendant une prestation
+/// acceptée ou en cours. Il s’arrête dès que la prestation est terminée, payée,
+/// annulée ou refusée.
 class LiveLocationForegroundService {
   LiveLocationForegroundService._();
 
@@ -38,9 +41,26 @@ class LiveLocationForegroundService {
     );
   }
 
-  /// Arrêt explicite (déconnexion).
+  /// Démarre ou arrête le suivi selon qu'une prestation a encore besoin de la position.
+  static Future<void> apply({
+    required bool needed,
+    required User? user,
+    required String? token,
+  }) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool(LiveLocationSync.trackingPrefKey, needed);
+    if (!needed) {
+      await stop();
+      return;
+    }
+    await startIfAuthenticated(user, token);
+  }
+
+  /// Arrêt explicite (déconnexion ou plus aucune prestation à suivre).
   static Future<void> stop() async {
     try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setBool(LiveLocationSync.trackingPrefKey, false);
       if (await FlutterForegroundTask.isRunningService) {
         await FlutterForegroundTask.stopService();
       }
@@ -55,6 +75,9 @@ class LiveLocationForegroundService {
     if (r != 'PRESTATAIRE' && r != 'PARTICULIER') return;
 
     if (kIsWeb) return;
+    // Le service premier plan n'est fiable que sur Android. Sur iOS,
+    // le démarrage au moment d'ouvrir une prestation fait quitter l'app.
+    if (!Platform.isAndroid) return;
 
     ensureConfigured();
 

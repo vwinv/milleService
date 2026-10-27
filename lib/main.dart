@@ -48,18 +48,12 @@ Future<void> main() async {
   }
 
   runApp(
-    buildMilleServicesApp(
-      child: const AppRoot(),
-      startLocale: easyStartLocale,
-    ),
+    buildMilleServicesApp(child: const AppRoot(), startLocale: easyStartLocale),
   );
 }
 
 /// Arbre racine (providers + localisation). Réutilisé par les tests widget.
-Widget buildMilleServicesApp({
-  required Widget child,
-  Locale? startLocale,
-}) {
+Widget buildMilleServicesApp({required Widget child, Locale? startLocale}) {
   return EasyLocalization(
     supportedLocales: const [Locale('fr'), Locale('en')],
     path: 'assets/langues',

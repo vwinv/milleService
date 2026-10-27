@@ -30,9 +30,13 @@ class LiveLocationTaskHandler extends TaskHandler {
 
   Future<void> _tick() async {
     if (!Utilities.useRealtimeLocation) return;
+    final prefs = await SharedPreferences.getInstance();
+    if (prefs.getBool(LiveLocationSync.trackingPrefKey) != true) {
+      await FlutterForegroundTask.stopService();
+      return;
+    }
     if (!await LiveLocationSync.shouldSendToServer()) return;
 
-    final prefs = await SharedPreferences.getInstance();
     final token = prefs.getString('token');
     if (token == null || token.isEmpty) return;
 

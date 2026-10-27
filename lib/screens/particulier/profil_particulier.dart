@@ -326,55 +326,6 @@ class _ProfilParticulierState extends State<ProfilParticulier> {
               settings: settings,
             ),
             SizedBox(height: SizeConfig.blockSizeVertical * 2.5),
-            SizedBox(
-              width: double.infinity,
-              child: ElevatedButton(
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: Utilities().colorBlueDark,
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(
-                      SizeConfig.blockSizeHorizontal * 8,
-                    ),
-                  ),
-                  padding: EdgeInsets.symmetric(
-                    vertical: SizeConfig.blockSizeVertical * 1.8,
-                  ),
-                ),
-                onPressed: () async {
-                  final res = await context
-                      .read<UserProvider>()
-                      .becomePrestataire();
-                  if (!mounted) return;
-                  if (res.success == true) {
-                    Utilities().showMesage(
-                      context,
-                      'success',
-                      'profil_become_provider_success'.tr(),
-                    );
-                    await AppNavigation.signOut(context);
-                    AppNavigation.goWelcome(context);
-                  } else {
-                    Utilities().showMesage(
-                      context,
-                      'error',
-                      res.message ?? 'profil_become_provider_failed'.tr(),
-                    );
-                  }
-                },
-                child: Text(
-                  'profil_become_provider_btn'.tr(),
-                  style: TextStyle(
-                    color: Colors.white,
-                    fontSize: SizeConfig.fontSize(
-                      SizeConfig.blockSizeHorizontal * 3.5,
-                    ),
-                    fontWeight: FontWeight.w600,
-                  ),
-                  textAlign: TextAlign.center,
-                ),
-              ),
-            ),
-            SizedBox(height: SizeConfig.blockSizeVertical * 2.5),
             _buildSimpleTile(
               icon: Icons.person_outline,
               label: 'profil_personal_info'.tr(),
@@ -394,7 +345,7 @@ class _ProfilParticulierState extends State<ProfilParticulier> {
                 context.read<AuthResumeProvider>().clear();
                 await AppNavigation.signOut(context);
                 if (!context.mounted) return;
-                AppNavigation.goParticulierHome(context);
+                AppNavigation.goWelcome(context);
               },
               child: Text(
                 'profil_logout'.tr(),

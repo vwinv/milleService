@@ -1,8 +1,8 @@
 import 'dart:async';
 import 'dart:math' as math;
-import 'dart:ui';
 import 'package:easy_localization/easy_localization.dart';
 import 'package:flutter/material.dart';
+import 'package:go_router/go_router.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart';
 import 'package:milleservices/controllers/prestationsController.dart';
 import 'package:milleservices/controllers/geocodingController.dart';
@@ -36,13 +36,13 @@ class _DeroulementPrestationState extends State<DeroulementPrestation> {
   Timer? _gpsTimer;
   Timer? _elapsedUiTimer;
   GoogleMapController? _mapController;
-  bool _didCenterOnFirstGps = false;
   LatLng? _lastDisplayedParticulier;
   LatLng? _lastDisplayedPrestataire;
   LatLng? _storedParticulierLatLng;
   LatLng? _storedPrestataireLatLng;
   String? _storedAddressKey;
   bool _mapInitialLoading = true;
+  Timer? _mapLoadingSafetyTimer;
   /// Évite d'afficher « Payer » avec un statut local obsolète (TERMINEE) avant le GET API.
   bool _statusSynced = false;
   /// Masque le bouton payer juste après PayDunya, le temps de confirmer côté serveur.
@@ -79,6 +79,11 @@ class _DeroulementPrestationState extends State<DeroulementPrestation> {
       _elapsedUiTimer = Timer.periodic(const Duration(seconds: 1), (_) {
         if (mounted) setState(() {});
       });
+      // Filet de sécurité : ne jamais bloquer l'UI si le trajet Google échoue.
+      _mapLoadingSafetyTimer = Timer(const Duration(seconds: 4), () {
+        if (!mounted || !_mapInitialLoading) return;
+        setState(() => _mapInitialLoading = false);
+      });
     });
   }
 
@@ -103,14 +108,6 @@ class _DeroulementPrestationState extends State<DeroulementPrestation> {
     if (!mounted) return;
     final userProvider = context.read<UserProvider>();
     await userProvider.pushMyDeviceLocation(ll.latitude, ll.longitude);
-    if (!_didCenterOnFirstGps && mounted) {
-      _didCenterOnFirstGps = true;
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        if (mounted) {
-          _mapController?.animateCamera(CameraUpdate.newLatLngZoom(ll, 15));
-        }
-      });
-    }
   }
 
   Future<void> _refreshStoredAddressPositions(Prestation prestation) async {
@@ -143,7 +140,7 @@ class _DeroulementPrestationState extends State<DeroulementPrestation> {
   void dispose() {
     _gpsTimer?.cancel();
     _elapsedUiTimer?.cancel();
-    _mapController?.dispose();
+    _mapLoadingSafetyTimer?.cancel();
     _prestationsProvider?.stopListeningPrestation(notify: false);
     super.dispose();
   }
@@ -158,8 +155,18 @@ class _DeroulementPrestationState extends State<DeroulementPrestation> {
     }
   }
 
+  /// Retour : la liste (historique) si elle est encore dans la pile, sinon l'accueil.
+  void _goBack() {
+    if (context.canPop()) {
+      context.pop();
+      return;
+    }
+    _popToAccueil();
+  }
+
   @override
   Widget build(BuildContext context) {
+    SizeConfig().init(context);
     final user = context.watch<UserProvider>().user;
     final prenom = user?.prenom?.toString() ?? '';
 
@@ -169,7 +176,14 @@ class _DeroulementPrestationState extends State<DeroulementPrestation> {
       stream: stream,
       initialData: widget.prestation,
       builder: (context, snapshot) {
-        final prestation = snapshot.data ?? widget.prestation;
+        var prestation = snapshot.data ?? widget.prestation;
+        final cancelled = _cancelledPrestation;
+        if (cancelled != null &&
+            cancelled.id == prestation.id &&
+            cancelled.isAnnulee &&
+            !prestation.isAnnulee) {
+          prestation = cancelled;
+        }
         if (prestation.isPayee && _paymentConfirmationPending && mounted) {
           WidgetsBinding.instance.addPostFrameCallback((_) {
             if (mounted) {
@@ -204,7 +218,7 @@ class _DeroulementPrestationState extends State<DeroulementPrestation> {
 
         /// Particulier : marqueur prestataire = lat/lng du profil prestataire (API), rafraîchis au poll → position live poussée par l’app prestataire.
         /// Prestataire : soi = GPS local ; client = coords particulier (API).
-        final LatLng? displayParticulier = isPrestataireView
+        var displayParticulier = isPrestataireView
             ? (Utilities.useRealtimeLocation
                   ? remoteParticulier
                   : (_storedParticulierLatLng ?? remoteParticulier))
@@ -218,6 +232,19 @@ class _DeroulementPrestationState extends State<DeroulementPrestation> {
             : (Utilities.useRealtimeLocation
                   ? remotePrestataire
                   : (_storedPrestataireLatLng ?? remotePrestataire));
+        if (displayParticulier != null &&
+            displayPrestataire != null &&
+            _boundsTooSmall(
+              displayParticulier.latitude,
+              displayPrestataire.latitude,
+              displayParticulier.longitude,
+              displayPrestataire.longitude,
+            )) {
+          displayParticulier = LatLng(
+            displayParticulier.latitude + 0.0004,
+            displayParticulier.longitude + 0.0004,
+          );
+        }
         _lastDisplayedParticulier = displayParticulier;
         _lastDisplayedPrestataire = displayPrestataire;
 
@@ -267,7 +294,7 @@ class _DeroulementPrestationState extends State<DeroulementPrestation> {
         }
 
         return PopScope(
-          canPop: false,
+          canPop: context.canPop(),
           onPopInvokedWithResult: (didPop, result) {
             if (!didPop) _popToAccueil();
           },
@@ -413,14 +440,11 @@ class _DeroulementPrestationState extends State<DeroulementPrestation> {
                           );
                           return;
                         }
-                        final other = _lastDisplayedPrestataire;
-                        if (other != null) {
-                          _fitCameraToPoints(target, other);
-                        } else {
+                        try {
                           _mapController?.animateCamera(
                             CameraUpdate.newLatLngZoom(target, 15),
                           );
-                        }
+                        } catch (_) {}
                       },
                       child: const Icon(Icons.my_location),
                     ),
@@ -430,9 +454,7 @@ class _DeroulementPrestationState extends State<DeroulementPrestation> {
             ),
             if (_mapInitialLoading)
               Positioned.fill(
-                child: BackdropFilter(
-                  filter: ImageFilter.blur(sigmaX: 6, sigmaY: 6),
-                  child: Container(
+                child: Container(
                     color: Colors.black.withValues(alpha: 0.22),
                     child: Center(
                       child: Container(
@@ -461,7 +483,6 @@ class _DeroulementPrestationState extends State<DeroulementPrestation> {
                     ),
                   ),
                 ),
-              ),
           ],
           ),
         );
@@ -487,9 +508,11 @@ class _DeroulementPrestationState extends State<DeroulementPrestation> {
     final isEnCours = prestation.isEnCours;
     final isTerminee = prestation.isTerminee;
     final isPayee = prestation.isPayee;
-    final isRefusee = prestation.isRefusee || prestation.isAnnulee;
+    final isRefusee = prestation.isRefusee;
+    final isAnnulee = prestation.isAnnulee;
+    final isStopped = isRefusee || isAnnulee;
 
-    final accepteVert = !isEnAttente && !isRefusee;
+    final accepteVert = !isEnAttente && !isStopped;
     // En cours : vert si terminé/payé, orange si accepté/en cours, gris sinon
     final enCoursVert = isTerminee || isPayee;
     final enCoursOrange = (isAcceptee || isEnCours) && !enCoursVert;
@@ -535,6 +558,7 @@ class _DeroulementPrestationState extends State<DeroulementPrestation> {
               isTerminee: isTerminee,
               isPayee: isPayee,
               isRefusee: isRefusee,
+              isAnnulee: isAnnulee,
               isPrestataire: isPrestataire,
               statusSynced: _statusSynced,
               paymentConfirmationPending: _paymentConfirmationPending,
@@ -776,7 +800,7 @@ class _DeroulementPrestationState extends State<DeroulementPrestation> {
       child: Row(
         children: [
           GestureDetector(
-            onTap: _popToAccueil,
+            onTap: _goBack,
             child: Icon(
               Icons.arrow_back_ios,
               color: Colors.white,
@@ -917,6 +941,7 @@ class _DeroulementPrestationState extends State<DeroulementPrestation> {
     required bool isTerminee,
     required bool isPayee,
     required bool isRefusee,
+    required bool isAnnulee,
     required bool isPrestataire,
     required bool statusSynced,
     required bool paymentConfirmationPending,
@@ -926,7 +951,28 @@ class _DeroulementPrestationState extends State<DeroulementPrestation> {
     Color titleColor = Colors.black87;
     IconData? titleIcon;
 
-    if (isRefusee) {
+    if (isAnnulee) {
+      final cancelledBy = prestation.annulePar?.toUpperCase();
+      final selfRole = isPrestataire ? 'PRESTATAIRE' : 'PARTICULIER';
+      final cancelledBySelf = cancelledBy == null
+          ? !isPrestataire
+          : cancelledBy == selfRole;
+      if (!isPrestataire && cancelledBy == 'PRESTATAIRE') {
+        title = 'deroulement_cancelled_by_prestataire_title'.tr();
+        body = '';
+      } else if (cancelledBySelf) {
+        title = 'deroulement_cancelled_title'.tr();
+        body = 'deroulement_cancelled_body_client'.tr();
+      } else if (cancelledBy == 'PRESTATAIRE') {
+        title = 'deroulement_cancelled_by_prestataire_title'.tr();
+        body = '';
+      } else {
+        title = 'deroulement_cancelled_title'.tr();
+        body = 'deroulement_cancelled_body_provider'.tr();
+      }
+      titleColor = _red;
+      titleIcon = Icons.cancel;
+    } else if (isRefusee) {
       title = 'deroulement_refused_title'.tr();
       body = 'deroulement_refused_body'.tr();
       titleColor = _red;
@@ -961,7 +1007,10 @@ class _DeroulementPrestationState extends State<DeroulementPrestation> {
 
     // Décompte uniquement après arrivée sur place (statut EN_COURS ou prestation clôturée).
     final shouldShowExecutionTimer =
-        (isEnCours || isTerminee || isPayee) && !isRefusee && !isEnAttente;
+        (isEnCours || isTerminee || isPayee) &&
+        !isRefusee &&
+        !isAnnulee &&
+        !isEnAttente;
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -1005,7 +1054,7 @@ class _DeroulementPrestationState extends State<DeroulementPrestation> {
                       fontSize: SizeConfig.fontSize(
                         SizeConfig.blockSizeHorizontal * 3.5,
                       ),
-                      color: isRefusee ? Colors.black87 : Colors.black54,
+                      color: (isRefusee || isAnnulee) ? Colors.black87 : Colors.black54,
                     ),
                     textAlign: TextAlign.center,
                   ),
@@ -1027,6 +1076,11 @@ class _DeroulementPrestationState extends State<DeroulementPrestation> {
             ),
           ),
         ],
+        if (isPayee)
+          _PrestationAvisSection(
+            prestation: prestation,
+            isPrestataire: isPrestataire,
+          ),
         if (isTerminee && !isPayee && !isPrestataire && statusSynced) ...[
           SizedBox(height: SizeConfig.blockSizeVertical * 1),
           Center(
@@ -1040,6 +1094,43 @@ class _DeroulementPrestationState extends State<DeroulementPrestation> {
                 color: Utilities().colorBlueDark,
               ),
               textAlign: TextAlign.center,
+            ),
+          ),
+        ],
+        if (isEnAttente || isAcceptee) ...[
+          SizedBox(height: SizeConfig.blockSizeVertical * 1.5),
+          Center(
+            child: SizedBox(
+              height: SizeConfig.blockSizeVertical * 6,
+              child: OutlinedButton(
+                onPressed: _cancelling
+                    ? null
+                    : () => _onAnnulerDemande(prestation),
+                style: OutlinedButton.styleFrom(
+                  foregroundColor: _red,
+                  side: const BorderSide(color: _red),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(
+                      SizeConfig.blockSizeHorizontal * 3,
+                    ),
+                  ),
+                ),
+                child: _cancelling
+                    ? const SizedBox(
+                        width: 22,
+                        height: 22,
+                        child: CircularProgressIndicator(strokeWidth: 2),
+                      )
+                    : Text(
+                        'deroulement_cancel_request'.tr(),
+                        style: TextStyle(
+                          fontSize: SizeConfig.fontSize(
+                            SizeConfig.blockSizeHorizontal * 3.8,
+                          ),
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+              ),
             ),
           ),
         ],
@@ -1159,7 +1250,7 @@ class _DeroulementPrestationState extends State<DeroulementPrestation> {
             ),
           ),
         ],
-        if (isRefusee) ...[
+        if ((isRefusee || isAnnulee) && !isPrestataire) ...[
           SizedBox(height: SizeConfig.blockSizeVertical * 2.5),
           Center(
             child: SizedBox(
@@ -1244,7 +1335,7 @@ class _DeroulementPrestationState extends State<DeroulementPrestation> {
       Utilities().showMesage(
         context,
         'error',
-        'Facture PayDunya indisponible. Réessayez.',
+        'Paiement SamirPay indisponible. Réessayez.',
       );
       return;
     }
@@ -1323,7 +1414,7 @@ class _DeroulementPrestationState extends State<DeroulementPrestation> {
     Utilities().showMesage(
       context,
       'success',
-      'La prestation passera en « payée » après confirmation PayDunya.',
+      'La prestation passera en « payée » après confirmation SamirPay.',
     );
     await _pollPrestationPayeeOrTimeout(
       prestation.id,
@@ -1448,6 +1539,188 @@ class _DeroulementPrestationState extends State<DeroulementPrestation> {
     return '$h:$m:$s';
   }
 
+  bool _cancelling = false;
+  Prestation? _cancelledPrestation;
+
+  Future<void> _onAnnulerDemande(Prestation prestation) async {
+    final isPrestataire =
+        context.read<UserProvider>().user?.role?.toString() == 'PRESTATAIRE';
+    final confirmed = await showDialog<bool>(
+      context: context,
+      barrierColor: Colors.black.withValues(alpha: 0.45),
+      builder: (ctx) {
+        final radius = SizeConfig.blockSizeHorizontal * 4;
+        final buttonHeight = SizeConfig.blockSizeVertical * 6;
+        return Dialog(
+          backgroundColor: Colors.white,
+          insetPadding: EdgeInsets.symmetric(
+            horizontal: SizeConfig.blockSizeHorizontal * 6,
+          ),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(radius),
+          ),
+          child: Padding(
+            padding: EdgeInsets.fromLTRB(
+              SizeConfig.blockSizeHorizontal * 5,
+              SizeConfig.blockSizeVertical * 2.4,
+              SizeConfig.blockSizeHorizontal * 5,
+              SizeConfig.blockSizeVertical * 2.2,
+            ),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Container(
+                  width: SizeConfig.blockSizeHorizontal * 14,
+                  height: SizeConfig.blockSizeHorizontal * 14,
+                  decoration: BoxDecoration(
+                    color: _red.withValues(alpha: 0.12),
+                    shape: BoxShape.circle,
+                  ),
+                  child: Icon(
+                    Icons.close_rounded,
+                    color: _red,
+                    size: SizeConfig.blockSizeHorizontal * 7,
+                  ),
+                ),
+                SizedBox(height: SizeConfig.blockSizeVertical * 1.6),
+                Text(
+                  'deroulement_cancel_confirm_title'.tr(),
+                  textAlign: TextAlign.center,
+                  style: TextStyle(
+                    fontWeight: FontWeight.w700,
+                    fontSize: SizeConfig.fontSize(
+                      SizeConfig.blockSizeHorizontal * 4.4,
+                    ),
+                    color: Utilities().colorBlueDark,
+                  ),
+                ),
+                SizedBox(height: SizeConfig.blockSizeVertical * 1),
+                Text(
+                  (isPrestataire
+                          ? 'deroulement_cancel_confirm_body_provider'
+                          : 'deroulement_cancel_confirm_body')
+                      .tr(),
+                  textAlign: TextAlign.center,
+                  style: TextStyle(
+                    fontSize: SizeConfig.fontSize(
+                      SizeConfig.blockSizeHorizontal * 3.5,
+                    ),
+                    height: 1.35,
+                    color: Colors.black54,
+                  ),
+                ),
+                SizedBox(height: SizeConfig.blockSizeVertical * 2.4),
+                SizedBox(
+                  width: double.infinity,
+                  height: buttonHeight,
+                  child: ElevatedButton(
+                    onPressed: () => Navigator.of(ctx).pop(true),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: _red,
+                      foregroundColor: Colors.white,
+                      elevation: 0,
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(
+                          SizeConfig.blockSizeHorizontal * 3,
+                        ),
+                      ),
+                    ),
+                    child: Text(
+                      'deroulement_cancel_confirm'.tr(),
+                      style: TextStyle(
+                        fontSize: SizeConfig.fontSize(
+                          SizeConfig.blockSizeHorizontal * 3.8,
+                        ),
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                  ),
+                ),
+                SizedBox(height: SizeConfig.blockSizeVertical * 1.2),
+                SizedBox(
+                  width: double.infinity,
+                  height: buttonHeight,
+                  child: OutlinedButton(
+                    onPressed: () => Navigator.of(ctx).pop(false),
+                    style: OutlinedButton.styleFrom(
+                      foregroundColor: Utilities().colorBlueDark,
+                      side: BorderSide(color: Utilities().colorBlueDark),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(
+                          SizeConfig.blockSizeHorizontal * 3,
+                        ),
+                      ),
+                    ),
+                    child: Text(
+                      'deroulement_cancel_keep'.tr(),
+                      style: TextStyle(
+                        fontSize: SizeConfig.fontSize(
+                          SizeConfig.blockSizeHorizontal * 3.8,
+                        ),
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        );
+      },
+    );
+    if (confirmed != true || !mounted) return;
+
+    final token = context.read<UserProvider>().token;
+    if (token == null || token.isEmpty) {
+      Utilities().showMesage(
+        context,
+        'error',
+        'deroulement_session_expired'.tr(),
+      );
+      return;
+    }
+
+    setState(() => _cancelling = true);
+    final res = await PrestationsController.instance.annuler(
+      token,
+      prestation.id,
+    );
+    if (!mounted) return;
+    if (res.success != true) {
+      setState(() => _cancelling = false);
+      Utilities().showMesage(
+        context,
+        'error',
+        res.message?.toString().isNotEmpty == true
+            ? res.message.toString()
+            : 'deroulement_cancel_error'.tr(),
+      );
+      return;
+    }
+
+    final provider = context.read<PrestationsProvider>();
+    if (res.data is Map) {
+      try {
+        final parsed = Prestation.fromJson(
+          Map<String, dynamic>.from(res.data as Map),
+        );
+        final updated = _prestationAnnuleeEnGardantLeDetail(prestation, parsed);
+        provider.publishPrestation(updated);
+        if (mounted) {
+          setState(() {
+            _cancelling = false;
+            _cancelledPrestation = updated;
+          });
+        }
+      } catch (_) {
+        if (mounted) setState(() => _cancelling = false);
+      }
+    } else if (mounted) {
+      setState(() => _cancelling = false);
+    }
+    await provider.fetchPrestationOnceAndEmit(prestation.id, token);
+  }
+
   Future<void> _onArriveADestination(Prestation prestation) async {
     final userProvider = context.read<UserProvider>();
     final token = userProvider.token;
@@ -1549,27 +1822,40 @@ class _DeroulementPrestationState extends State<DeroulementPrestation> {
     );
   }
 
-  Future<void> _fitCameraToPoints(LatLng a, LatLng b) async {
-    final controller = _mapController;
-    if (controller == null) return;
-    final minLat = math.min(a.latitude, b.latitude);
-    final maxLat = math.max(a.latitude, b.latitude);
-    final minLng = math.min(a.longitude, b.longitude);
-    final maxLng = math.max(a.longitude, b.longitude);
-    try {
-      await controller.animateCamera(
-        CameraUpdate.newLatLngBounds(
-          LatLngBounds(
-            southwest: LatLng(minLat, minLng),
-            northeast: LatLng(maxLat, maxLng),
-          ),
-          70,
-        ),
-      );
-    } catch (_) {
-      await controller.animateCamera(CameraUpdate.newLatLngZoom(a, 15));
-    }
+  /// La réponse d'annulation n'a pas les coordonnées. On garde le détail
+  /// déjà affiché et on ne change que le statut, pour ne pas recadrer la carte.
+  Prestation _prestationAnnuleeEnGardantLeDetail(
+    Prestation actuelle,
+    Prestation annulee,
+  ) {
+    return Prestation(
+      id: actuelle.id,
+      statut: annulee.statut.isNotEmpty ? annulee.statut : 'ANNULEE',
+      annulePar: annulee.annulePar ?? actuelle.annulePar,
+      typeDeTache: actuelle.typeDeTache,
+      description: actuelle.description,
+      imageUrl: actuelle.imageUrl,
+      budget: actuelle.budget,
+      adresse: actuelle.adresse,
+      codePostal: actuelle.codePostal,
+      ville: actuelle.ville,
+      noteParticulier: actuelle.noteParticulier,
+      acceptedAt: actuelle.acceptedAt,
+      startedAt: actuelle.startedAt,
+      completedAt: actuelle.completedAt,
+      createdAt: actuelle.createdAt,
+      particulier: actuelle.particulier,
+      prestataire: actuelle.prestataire,
+      service: actuelle.service,
+      avisNote: actuelle.avisNote,
+      avisCommentaire: actuelle.avisCommentaire,
+    );
   }
+
+}
+
+bool _boundsTooSmall(double minLat, double maxLat, double minLng, double maxLng) {
+  return (maxLat - minLat).abs() < 0.00001 && (maxLng - minLng).abs() < 0.00001;
 }
 
 class _DeroulementMap extends StatefulWidget {
@@ -1618,7 +1904,6 @@ class _DeroulementMapState extends State<_DeroulementMap> {
     super.didUpdateWidget(oldWidget);
     if (oldWidget.from != widget.from || oldWidget.to != widget.to) {
       _fetchRouteIfNeeded();
-      _fitCameraToRouteOrPoints();
     }
   }
 
@@ -1655,16 +1940,34 @@ class _DeroulementMapState extends State<_DeroulementMap> {
     return 2 * earthRadius * math.atan2(math.sqrt(h), math.sqrt(1 - h));
   }
 
+  void _notifyRouteReadyOnce() {
+    if (_routeReadyNotified) return;
+    _routeReadyNotified = true;
+    // Différer : appelé depuis initState/didUpdateWidget → setState parent
+    // pendant le build ferait planter l'écran.
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      widget.onRouteReady?.call();
+    });
+  }
+
   Future<void> _fetchRouteIfNeeded() async {
     final from = widget.from;
     final to = widget.to;
     if (from == null || to == null) {
-      setState(() => _routePoints = null);
+      if (_routePoints != null && mounted) {
+        setState(() => _routePoints = null);
+      }
+      // Afficher l'écran même sans trajet (coords pas encore arrivées / absentes).
+      _notifyRouteReadyOnce();
       return;
     }
     final key =
         '${from.latitude},${from.longitude};${to.latitude},${to.longitude}';
-    if (_routeKey == key && _routePoints != null) return;
+    if (_routeKey == key && _routePoints != null) {
+      _notifyRouteReadyOnce();
+      return;
+    }
     final keyChanged = _routeKey != key;
 
     final movedEnough = _movedEnoughSinceLastFetch(from, to);
@@ -1674,7 +1977,7 @@ class _DeroulementMapState extends State<_DeroulementMap> {
         lastAt == null || now.difference(lastAt) >= _minRouteFetchInterval;
     if (!keyChanged && !movedEnough && !canFetchNow) return;
 
-    if (!keyChanged && !canFetchNow) {
+    if (!keyChanged && !canFetchNow && lastAt != null) {
       final wait = _minRouteFetchInterval - now.difference(lastAt);
       _routeThrottleTimer?.cancel();
       _routeThrottleTimer = Timer(wait, () {
@@ -1693,14 +1996,13 @@ class _DeroulementMapState extends State<_DeroulementMap> {
       _routeKey = key;
       setState(() => _routePoints = points);
       _fitCameraToRouteOrPoints();
-      if (!_routeReadyNotified) {
-        _routeReadyNotified = true;
-        widget.onRouteReady?.call();
-      }
+      _notifyRouteReadyOnce();
       return;
     }
-    // Ne pas figer l'état sur un échec ponctuel : on retente.
+    // Échec Routes API (ex. 403) : lever le loader, retenter en arrière-plan.
     _routeKey = null;
+    setState(() => _routePoints = null);
+    _notifyRouteReadyOnce();
     _routeRetryTimer = Timer(_routeRetryDelay, () {
       if (mounted) _fetchRouteIfNeeded();
     });
@@ -1716,31 +2018,12 @@ class _DeroulementMapState extends State<_DeroulementMap> {
             if (widget.from != null) widget.from!,
             if (widget.to != null) widget.to!,
           ];
-    if (points.length < 2) return;
-
-    double minLat = points.first.latitude;
-    double maxLat = points.first.latitude;
-    double minLng = points.first.longitude;
-    double maxLng = points.first.longitude;
-    for (final p in points.skip(1)) {
-      if (p.latitude < minLat) minLat = p.latitude;
-      if (p.latitude > maxLat) maxLat = p.latitude;
-      if (p.longitude < minLng) minLng = p.longitude;
-      if (p.longitude > maxLng) maxLng = p.longitude;
-    }
+    if (points.isEmpty) return;
     try {
       await controller.animateCamera(
-        CameraUpdate.newLatLngBounds(
-          LatLngBounds(
-            southwest: LatLng(minLat, minLng),
-            northeast: LatLng(maxLat, maxLng),
-          ),
-          70,
-        ),
+        CameraUpdate.newLatLngZoom(points.first, 15),
       );
-    } catch (_) {
-      // Peut échouer avant le layout complet de la map: on ignore silencieusement.
-    }
+    } catch (_) {}
   }
 
   @override
@@ -1771,7 +2054,6 @@ class _DeroulementMapState extends State<_DeroulementMap> {
       onMapCreated: (controller) {
         _internalMapController = controller;
         widget.onMapCreated?.call(controller);
-        _fitCameraToRouteOrPoints();
       },
       markers: widget.markers,
       polylines: polylines,
@@ -1809,4 +2091,216 @@ class _DashedLinePainter extends CustomPainter {
 
   @override
   bool shouldRepaint(covariant CustomPainter oldDelegate) => false;
+}
+
+class _PrestationAvisSection extends StatefulWidget {
+  const _PrestationAvisSection({
+    required this.prestation,
+    required this.isPrestataire,
+  });
+
+  final Prestation prestation;
+  final bool isPrestataire;
+
+  @override
+  State<_PrestationAvisSection> createState() => _PrestationAvisSectionState();
+}
+
+class _PrestationAvisSectionState extends State<_PrestationAvisSection> {
+  late int _note;
+  late final TextEditingController _commentaire;
+  bool _submitting = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _note = widget.prestation.avisNote ?? 0;
+    _commentaire = TextEditingController(
+      text: widget.prestation.avisCommentaire ?? '',
+    );
+  }
+
+  @override
+  void didUpdateWidget(covariant _PrestationAvisSection oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (widget.prestation.avisNote != oldWidget.prestation.avisNote &&
+        widget.prestation.avisNote != null) {
+      _note = widget.prestation.avisNote!;
+    }
+  }
+
+  @override
+  void dispose() {
+    _commentaire.dispose();
+    super.dispose();
+  }
+
+  Future<void> _submit() async {
+    if (_note < 1 || _note > 5) {
+      Utilities().showMesage(context, 'error', 'deroulement_rate_pick'.tr());
+      return;
+    }
+    final token = context.read<UserProvider>().token;
+    if (token == null || token.isEmpty) {
+      Utilities().showMesage(
+        context,
+        'error',
+        'deroulement_session_expired'.tr(),
+      );
+      return;
+    }
+    setState(() => _submitting = true);
+    final res = await PrestationsController.instance.noterPrestation(
+      token,
+      widget.prestation.id,
+      note: _note,
+      commentaire: _commentaire.text,
+    );
+    if (!mounted) return;
+    setState(() => _submitting = false);
+    if (res.success != true) {
+      Utilities().showMesage(
+        context,
+        'error',
+        res.message?.toString().isNotEmpty == true
+            ? res.message.toString()
+            : 'deroulement_rate_error'.tr(),
+      );
+      return;
+    }
+    await context.read<PrestationsProvider>().fetchPrestationOnceAndEmit(
+      widget.prestation.id,
+      token,
+    );
+    if (!mounted) return;
+    Utilities().showMesage(context, 'success', 'deroulement_rate_success'.tr());
+  }
+
+  Widget _stars({required bool interactive}) {
+    return Row(
+      mainAxisAlignment: MainAxisAlignment.center,
+      children: List.generate(5, (index) {
+        final filled = index < _note;
+        final icon = Icon(
+          filled ? Icons.star : Icons.star_border,
+          color: const Color(0xFFFFB300),
+          size: 32,
+        );
+        if (!interactive) return icon;
+        return IconButton(
+          onPressed: _submitting ? null : () => setState(() => _note = index + 1),
+          icon: icon,
+        );
+      }),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final existing = widget.prestation.avisNote;
+    final readOnly = widget.isPrestataire || existing != null;
+    if (widget.isPrestataire && existing == null) {
+      return const SizedBox.shrink();
+    }
+
+    final comment = (widget.prestation.avisCommentaire ?? '').trim();
+
+    return Padding(
+      padding: EdgeInsets.only(top: SizeConfig.blockSizeVertical * 1.5),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Text(
+            widget.isPrestataire
+                ? 'deroulement_rate_received'.tr()
+                : (existing != null
+                      ? 'deroulement_rate_thanks'.tr()
+                      : 'deroulement_rate_title'.tr()),
+            textAlign: TextAlign.center,
+            style: TextStyle(
+              fontWeight: FontWeight.w700,
+              fontSize: SizeConfig.fontSize(SizeConfig.blockSizeHorizontal * 4),
+              color: Utilities().colorBlueDark,
+            ),
+          ),
+          if (!readOnly) ...[
+            SizedBox(height: SizeConfig.blockSizeVertical * 0.5),
+            Text(
+              'deroulement_rate_hint'.tr(),
+              textAlign: TextAlign.center,
+              style: TextStyle(
+                fontSize: SizeConfig.fontSize(
+                  SizeConfig.blockSizeHorizontal * 3.2,
+                ),
+                color: Colors.black54,
+              ),
+            ),
+          ],
+          _stars(interactive: !readOnly),
+          if (readOnly && comment.isNotEmpty)
+            Text(
+              comment,
+              textAlign: TextAlign.center,
+              style: TextStyle(
+                fontSize: SizeConfig.fontSize(
+                  SizeConfig.blockSizeHorizontal * 3.4,
+                ),
+                color: Colors.black87,
+              ),
+            ),
+          if (!readOnly) ...[
+            SizedBox(height: SizeConfig.blockSizeVertical * 1),
+            TextField(
+              controller: _commentaire,
+              minLines: 2,
+              maxLines: 4,
+              maxLength: 2000,
+              textInputAction: TextInputAction.done,
+              decoration: InputDecoration(
+                labelText: 'deroulement_rate_comment_label'.tr(),
+                hintText: 'deroulement_rate_comment_hint'.tr(),
+                border: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(12),
+                ),
+              ),
+            ),
+            SizedBox(height: SizeConfig.blockSizeVertical * 1),
+            SizedBox(
+              height: SizeConfig.blockSizeVertical * 6,
+              child: ElevatedButton(
+                onPressed: _submitting ? null : _submit,
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: Utilities().colorBlueDark,
+                  foregroundColor: Colors.white,
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(
+                      SizeConfig.blockSizeHorizontal * 3,
+                    ),
+                  ),
+                ),
+                child: _submitting
+                    ? const SizedBox(
+                        width: 22,
+                        height: 22,
+                        child: CircularProgressIndicator(
+                          strokeWidth: 2,
+                          color: Colors.white,
+                        ),
+                      )
+                    : Text(
+                        'deroulement_rate_submit'.tr(),
+                        style: TextStyle(
+                          fontSize: SizeConfig.fontSize(
+                            SizeConfig.blockSizeHorizontal * 3.8,
+                          ),
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+              ),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
 }

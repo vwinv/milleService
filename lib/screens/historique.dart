@@ -1,6 +1,9 @@
+import 'dart:async';
+
 import 'package:easy_localization/easy_localization.dart';
 import 'package:flutter/material.dart';
 import 'package:milleservices/models/prestation.dart';
+import 'package:milleservices/providers/prestationsProvider.dart';
 import 'package:milleservices/providers/userProvider.dart';
 import 'package:milleservices/navigation/app_navigation.dart';
 import 'package:milleservices/services/sizeConfig.dart';
@@ -12,12 +15,74 @@ import 'package:provider/provider.dart';
 /// sous forme de cartes. Carte différente selon le rôle :
 /// - PARTICULIER : prestataire, service, date, tarif horaire.
 /// - PRESTATAIRE : nom client, type de prestation, budget, adresse, icône détail.
-class Historique extends StatelessWidget {
+class Historique extends StatefulWidget {
   final List<Prestation> prestations;
 
-  /// Appelé quand le prestataire tape sur l'icône œil (optionnel).
+  /// `en_attente` ou `terminee` : rechargement périodique pour retirer
+  /// une demande annulée pendant que la liste est ouverte.
+  final String? refreshFilter;
 
-  const Historique({super.key, required this.prestations});
+  const Historique({
+    super.key,
+    required this.prestations,
+    this.refreshFilter,
+  });
+
+  @override
+  State<Historique> createState() => _HistoriqueState();
+}
+
+class _HistoriqueState extends State<Historique> {
+  late List<Prestation> _items;
+  Timer? _timer;
+  bool _reloading = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _items = _applyFilter(widget.prestations);
+    if (widget.refreshFilter != null) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        unawaited(_reload());
+      });
+      _timer = Timer.periodic(const Duration(seconds: 4), (_) {
+        unawaited(_reload());
+      });
+    }
+  }
+
+  @override
+  void dispose() {
+    _timer?.cancel();
+    super.dispose();
+  }
+
+  List<Prestation> _applyFilter(List<Prestation> source) {
+    switch (widget.refreshFilter) {
+      case 'en_attente':
+        return source.where((p) => p.isEnAttente).toList();
+      case 'terminee':
+        return source.where((p) => p.isTerminee || p.isPayee).toList();
+      default:
+        return List<Prestation>.from(source);
+    }
+  }
+
+  Future<void> _reload() async {
+    if (_reloading || !mounted || widget.refreshFilter == null) return;
+    _reloading = true;
+    try {
+      final provider = context.read<PrestationsProvider>();
+      final user = context.read<UserProvider>();
+      await provider.loadMyPrestations(user);
+      if (!mounted) return;
+      setState(() {
+        _items = _applyFilter(provider.myPrestations);
+      });
+    } finally {
+      _reloading = false;
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -40,7 +105,7 @@ class Historique extends StatelessWidget {
         ),
       ),
       backgroundColor: Colors.white,
-      body: prestations.isEmpty
+      body: _items.isEmpty
           ? Center(
               child: Text(
                 'hist_empty'.tr(),
@@ -57,11 +122,11 @@ class Historique extends StatelessWidget {
                 horizontal: SizeConfig.blockSizeHorizontal * 5,
                 vertical: SizeConfig.blockSizeVertical * 2,
               ),
-              itemCount: prestations.length,
+              itemCount: _items.length,
               separatorBuilder: (_, __) =>
                   SizedBox(height: SizeConfig.blockSizeVertical * 1.5),
               itemBuilder: (context, index) {
-                final p = prestations[index];
+                final p = _items[index];
                 if (isParticulier) {
                   return _buildParticulierCard(context, p);
                 }
@@ -192,9 +257,12 @@ class Historique extends StatelessWidget {
           if (p.isEnAttente) {
             AppNavigation.pushPrestataireConfirmPrestation<bool>(context, p)
                 .then((value) {
-              if (value == true && context.mounted) {
+              if (!context.mounted) return;
+              if (value == true) {
                 AppNavigation.pop(context, true);
+                return;
               }
+              unawaited(_reload());
             });
           } else {
             AppNavigation.pushPrestatairePrestation(context, p);
